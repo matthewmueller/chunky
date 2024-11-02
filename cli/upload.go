@@ -13,6 +13,7 @@ import (
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/gitignore"
+	"github.com/matthewmueller/chunky/internal/timeid"
 	"github.com/matthewmueller/virt"
 )
 
@@ -31,7 +32,6 @@ func (u *Upload) Command(cli cli.Command) cli.Command {
 	cmd.Arg("repo", "repository to upload to").String(&u.To)
 	cmd.Args("subpaths", "subpaths to upload").Strings(&u.Subpaths).Default()
 	cmd.Flag("tag", "tag the revision").Short('t').Optional().String(&u.Tag)
-	cmd.Flag("message", "message for the revision").Short('m').String(&u.Message).Default("")
 	return cmd
 }
 
@@ -59,7 +59,7 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 	ignore := gitignore.FromFS(fsys)
 
 	tree := virt.Tree{}
-	commit := commits.New(in.Message)
+	commit := commits.New()
 	commit.CreatedAt = time.Now()
 
 	// Walk over the files, chunk them and add them to the file system we're going
@@ -110,13 +110,13 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 	if err != nil {
 		return err
 	}
-	commitHash := fmt.Sprintf("%02x", sha256.Sum256(commitData))
+	commitHash := timeid.Encode(commit.CreatedAt)
 	commitPath := fmt.Sprintf("commits/%s", commitHash)
 	tree[commitPath] = &virt.File{
 		Data: commitData,
 		Mode: 0644,
 	}
-	fmt.Println(commitHash)
+
 	// Add the latest ref
 	tree["tags/latest"] = &virt.File{
 		Data: []byte(commitHash),

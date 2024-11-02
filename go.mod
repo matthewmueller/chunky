@@ -3,6 +3,7 @@ module github.com/matthewmueller/chunky
 go 1.23.0
 
 require (
+	github.com/dustin/go-humanize v1.0.1
 	github.com/livebud/cli v0.0.10
 	github.com/matryer/is v1.4.1
 	github.com/matthewmueller/logs v0.0.2

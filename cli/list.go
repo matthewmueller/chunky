@@ -7,8 +7,8 @@ import (
 	"io/fs"
 	"path"
 	"sort"
-	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/repo"
@@ -97,7 +97,7 @@ func (c *CLI) List(ctx context.Context, in *List) error {
 		if err := json.Unmarshal(commitFile.Data, &commit); err != nil {
 			return err
 		}
-		fmt.Fprintf(c.Stdout, "%s %s %s %+v\n", hash[:8], commit.Message, commit.CreatedAt.Format(time.DateTime), tags)
+		fmt.Fprintf(c.Stdout, "%s %s %+v\n", hash, humanize.Bytes(commit.Size()), tags)
 	}
 	return nil
 }
