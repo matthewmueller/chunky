@@ -25,8 +25,8 @@ func (d *Download) Command(cli cli.Command) cli.Command {
 	cmd := cli.Command("download", "download a directory from a repository")
 	cmd.Arg("from", "repository to download from").String(&d.From)
 	cmd.Arg("to", "directory to download to").String(&d.To)
+	cmd.Arg("revision", "revision to download").String(&d.Revision).Default("latest")
 	cmd.Args("subpaths", "subpaths to download").Strings(&d.Subpaths).Default()
-	cmd.Flag("revision", "revision to download").Short('r').String(&d.Revision).Default("latest")
 	cmd.Flag("sync", "sync the repository before downloading").Bool(&d.Sync).Default(false)
 	return cmd
 }
