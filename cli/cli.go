@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,7 +14,6 @@ import (
 	"github.com/matthewmueller/chunky/internal/repos/sftp"
 	"github.com/matthewmueller/logs"
 	"github.com/matthewmueller/virt"
-	"github.com/restic/chunker"
 )
 
 func Run() int {
@@ -80,12 +78,6 @@ retry:
 
 func (c *CLI) loadFS(path string) (virt.FS, error) {
 	return virt.OS(path), nil
-}
-
-var pol = chunker.Pol(0x3DA3358B4DC173)
-
-func (c *CLI) chunker(data []byte) *chunker.Chunker {
-	return chunker.New(bytes.NewReader(data), pol)
 }
 
 func (c *CLI) Parse(ctx context.Context, args ...string) error {

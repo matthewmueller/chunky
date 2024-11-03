@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -11,9 +11,10 @@ import (
 	"time"
 
 	"github.com/livebud/cli"
+	"github.com/matthewmueller/chunky/internal/chunker"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/gitignore"
-	"github.com/matthewmueller/chunky/internal/timeid"
+	"github.com/matthewmueller/chunky/internal/gzip"
 	"github.com/matthewmueller/virt"
 )
 
@@ -62,6 +63,9 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 	commit := commits.New()
 	commit.CreatedAt = time.Now()
 
+	checksum := sha256.New()
+	size := uint64(0)
+
 	// Walk over the files, chunk them and add them to the file system we're going
 	// to upload. We'll also add each file to the commit object.
 	// TODO: handle subpaths
@@ -80,44 +84,47 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 			return err
 		}
 		file := commit.File(path, info)
+		checksum.Write(data)
+		size += uint64(info.Size())
 
 		// create a chunker
-		chunker := c.chunker(data)
-		buf := make([]byte, chunker.MaxSize)
+		chunker := chunker.New(data)
 		for {
-			chunk, err := chunker.Next(buf)
+			chunk, err := chunker.Chunk()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					break
 				}
 				return err
 			}
-			hash := sha256.Sum256(chunk.Data)
-			fpath := fmt.Sprintf("objects/%02x/%02x", hash[:1], hash[1:])
+			hash := chunk.Hash()
+			fpath := fmt.Sprintf("objects/%s/%s", hash[:2], hash[2:])
+			compressed, err := gzip.Compress(chunk.Data)
+			if err != nil {
+				return err
+			}
 			tree[fpath] = &virt.File{
-				Data: chunk.Data,
+				Data: compressed,
 				Mode: info.Mode(),
 			}
-			file.Add(fmt.Sprintf("%02x", hash))
+			file.Add(hash)
 		}
 		return nil
 	}); err != nil {
 		return err
 	}
 
+	// add the checksum to the commit
+	commit.Checksum = hex.EncodeToString(checksum.Sum(nil))
+	commit.Size = size
+
 	// add the commit file
-	commitData, err := json.MarshalIndent(commit, "", "  ")
-	if err != nil {
-		return err
-	}
-	commitHash := timeid.Encode(commit.CreatedAt)
-	commitPath := fmt.Sprintf("commits/%s", commitHash)
-	tree[commitPath] = &virt.File{
-		Data: commitData,
-		Mode: 0644,
+	if err := commits.Write(ctx, tree, commit); err != nil {
+		return fmt.Errorf("cli: unable to write commit: %w", err)
 	}
 
 	// Add the latest ref
+	commitHash := commit.Hash()
 	tree["tags/latest"] = &virt.File{
 		Data: []byte(commitHash),
 		Mode: 0644,

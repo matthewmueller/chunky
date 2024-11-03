@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/livebud/cli"
@@ -48,12 +50,19 @@ func (c *CLI) Download(ctx context.Context, in *Download) error {
 
 	// Download into a virtual tree
 	tree := virt.Tree{}
+	checksum := sha256.New()
 	for _, file := range commit.Files {
 		vfile, err := commits.ReadFile(ctx, repo, file)
 		if err != nil {
 			return fmt.Errorf("cli: unable to download file %q: %w", file.Path, err)
 		}
 		tree[file.Path] = vfile
+		checksum.Write(vfile.Data)
+	}
+
+	// Verify the checksum
+	if commit.Checksum != hex.EncodeToString(checksum.Sum(nil)) {
+		return fmt.Errorf("cli: checksum mismatch for commit %q", in.Revision)
 	}
 
 	// Write the virtual tree to the filesystem

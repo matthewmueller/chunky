@@ -33,9 +33,9 @@ func (c *CLI) Cat(ctx context.Context, in *Cat) error {
 		return err
 	}
 
-	commitFile, ok := commit.Files[in.Path]
-	if !ok {
-		return fmt.Errorf("cli: file not found: %s", in.Path)
+	commitFile, err := commits.FindFile(commit, in.Path)
+	if err != nil {
+		return fmt.Errorf("cli: unable to find %s in commit: %w", in.Path, err)
 	}
 
 	vfile, err := commits.ReadFile(ctx, repo, commitFile)
