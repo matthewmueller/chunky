@@ -22,31 +22,23 @@ func (c *Cat) Command(cli cli.Command) cli.Command {
 	return cmd
 }
 
-func findCommitFile(commit *commits.Commit, path string) *commits.File {
-	for _, file := range commit.Files {
-		if file.Path == path {
-			return file
-		}
-	}
-	return nil
-}
-
 func (c *CLI) Cat(ctx context.Context, in *Cat) error {
 	repo, err := c.loadRepo(in.Repo)
 	if err != nil {
 		return err
 	}
-	commit, err := loadCommit(ctx, repo, in.Revision)
+
+	commit, err := commits.Read(ctx, repo, in.Revision)
 	if err != nil {
 		return err
 	}
 
-	commitFile := findCommitFile(commit, in.Path)
-	if commitFile == nil {
+	commitFile, ok := commit.Files[in.Path]
+	if !ok {
 		return fmt.Errorf("cli: file not found: %s", in.Path)
 	}
 
-	vfile, err := downloadCommitFile(ctx, repo, commitFile)
+	vfile, err := commits.ReadFile(ctx, repo, commitFile)
 	if err != nil {
 		return err
 	}

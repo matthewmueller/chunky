@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/matthewmueller/chunky/internal/repo"
+	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/virt"
 	"golang.org/x/sync/errgroup"
 )
@@ -20,7 +20,7 @@ type Repo struct {
 	dir string
 }
 
-var _ repo.Repo = (*Repo)(nil)
+var _ repos.Repo = (*Repo)(nil)
 
 // Create a new repository.
 func (r *Repo) Create(ctx context.Context) error {
@@ -52,14 +52,10 @@ func (r *Repo) Download(ctx context.Context, to virt.FS, paths ...string) error 
 	return virt.WriteFS(virt.OS(r.dir), to, paths...)
 }
 
-func (r *Repo) Remove(ctx context.Context, paths ...string) error {
-	return nil
-}
-
-func (r *Repo) Stat(ctx context.Context, path string) (fs.FileInfo, error) {
-	return nil, nil
-}
-
 func (r *Repo) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error {
 	return fs.WalkDir(virt.OS(r.dir), dir, fn)
+}
+
+func (r *Repo) Close() error {
+	return nil
 }

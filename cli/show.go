@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/livebud/cli"
+	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/virt"
 )
 
@@ -25,7 +26,7 @@ func (c *CLI) Show(ctx context.Context, in *Show) error {
 	if err != nil {
 		return err
 	}
-	commit, err := loadCommit(ctx, repo, in.Revision)
+	commit, err := commits.Read(ctx, repo, in.Revision)
 	if err != nil {
 		return err
 	}

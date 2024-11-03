@@ -11,7 +11,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/internal/commits"
-	"github.com/matthewmueller/chunky/internal/repo"
+	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/virt"
 )
 
@@ -25,7 +25,7 @@ func (l *List) Command(cli cli.Command) cli.Command {
 	return cmd
 }
 
-func (c *CLI) loadCommitFiles(ctx context.Context, repo repo.Repo) (files []*virt.File, err error) {
+func (c *CLI) loadCommitFiles(ctx context.Context, repo repos.Repo) (files []*virt.File, err error) {
 	// Load commit files
 	if err := repo.Walk(ctx, "commits", func(path string, de fs.DirEntry, err error) error {
 		if err != nil {
@@ -34,7 +34,7 @@ func (c *CLI) loadCommitFiles(ctx context.Context, repo repo.Repo) (files []*vir
 		if de.IsDir() {
 			return nil
 		}
-		commitFile, err := downloadFile(ctx, repo, path)
+		commitFile, err := repos.Download(ctx, repo, path)
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ func (c *CLI) loadCommitFiles(ctx context.Context, repo repo.Repo) (files []*vir
 	return files, nil
 }
 
-func (c *CLI) loadTagMap(ctx context.Context, repo repo.Repo) (tags map[string][]string, err error) {
+func (c *CLI) loadTagMap(ctx context.Context, repo repos.Repo) (tags map[string][]string, err error) {
 	tags = map[string][]string{}
 	if err := repo.Walk(ctx, "tags", func(fpath string, de fs.DirEntry, err error) error {
 		if err != nil {
@@ -64,7 +64,7 @@ func (c *CLI) loadTagMap(ctx context.Context, repo repo.Repo) (tags map[string][
 		} else if de.IsDir() {
 			return nil
 		}
-		tagFile, err := downloadFile(ctx, repo, fpath)
+		tagFile, err := repos.Download(ctx, repo, fpath)
 		if err != nil {
 			return err
 		}

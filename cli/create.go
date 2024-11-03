@@ -8,17 +8,17 @@ import (
 	"github.com/matthewmueller/virt"
 )
 
-type New struct {
+type Create struct {
 	Repo string
 }
 
-func (n *New) Command(cli cli.Command) cli.Command {
-	cmd := cli.Command("new", "new repository")
-	cmd.Arg("path", "path to the new repository").String(&n.Repo)
+func (c *Create) Command(cli cli.Command) cli.Command {
+	cmd := cli.Command("create", "create a new repository")
+	cmd.Arg("path", "path to the new repository").String(&c.Repo)
 	return cmd
 }
 
-func (c *CLI) New(ctx context.Context, in *New) error {
+func (c *CLI) Create(ctx context.Context, in *Create) error {
 	repo, err := c.loadRepo(in.Repo)
 	if err != nil {
 		return err

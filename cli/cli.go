@@ -9,8 +9,10 @@ import (
 	"os"
 
 	"github.com/livebud/cli"
-	"github.com/matthewmueller/chunky/internal/repo"
-	"github.com/matthewmueller/chunky/internal/repo/local"
+	"github.com/matthewmueller/chunky/internal/prompt"
+	"github.com/matthewmueller/chunky/internal/repos"
+	"github.com/matthewmueller/chunky/internal/repos/local"
+	"github.com/matthewmueller/chunky/internal/repos/sftp"
 	"github.com/matthewmueller/logs"
 	"github.com/matthewmueller/virt"
 	"github.com/restic/chunker"
@@ -46,17 +48,34 @@ type CLI struct {
 	Env    map[string]string
 }
 
-func (c *CLI) loadRepo(path string) (repo.Repo, error) {
-	url, err := repo.Parse(path)
+func (c *CLI) loadRepo(path string) (repos.Repo, error) {
+	url, err := repos.Parse(path)
 	if err != nil {
 		return nil, fmt.Errorf("cli: parsing repo path: %w", err)
 	}
 	switch url.Scheme {
 	case "file":
 		return local.New(url.Path), nil
+	case "sftp", "ssh":
+		signer, err := sftp.Parse(url, c.onPassword)
+		if err != nil {
+			return nil, err
+		}
+		return sftp.Dial(url, signer)
 	default:
 		return nil, fmt.Errorf("cli: unsupported repo scheme: %s", url.Scheme)
 	}
+}
+
+func (c *CLI) onPassword() (string, error) {
+retry:
+	password, err := prompt.PasswordMasked("Enter your SSH key password: ")
+	if err != nil {
+		return "", err
+	} else if password == "" {
+		goto retry
+	}
+	return password, nil
 }
 
 func (c *CLI) loadFS(path string) (virt.FS, error) {
@@ -73,10 +92,10 @@ func (c *CLI) Parse(ctx context.Context, args ...string) error {
 	cli := cli.New("chunky", "efficiently store versioned data")
 
 	{ // new <repo>
-		new := &New{}
+		new := &Create{}
 		cmd := new.Command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.New(ctx, new)
+			return c.Create(ctx, new)
 		})
 	}
 
@@ -118,6 +137,14 @@ func (c *CLI) Parse(ctx context.Context, args ...string) error {
 		cmd := cat.Command(cli)
 		cmd.Run(func(ctx context.Context) error {
 			return c.Cat(ctx, cat)
+		})
+	}
+
+	{ // tag <repo> <commit> <tag>
+		tag := &Tag{}
+		cmd := tag.Command(cli)
+		cmd.Run(func(ctx context.Context) error {
+			return c.Tag(ctx, tag)
 		})
 	}
 
