@@ -39,7 +39,7 @@ func (c *CLI) Tag(ctx context.Context, in *Tag) error {
 	// Create the tag file
 	tree := virt.Tree{
 		fmt.Sprintf("tags/%s", in.Tag): &virt.File{
-			Data: []byte(commit.Hash()),
+			Data: []byte(commit.ID()),
 			Mode: 0644,
 		},
 	}

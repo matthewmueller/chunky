@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 
 	"github.com/livebud/cli"
@@ -51,6 +52,10 @@ func (c *CLI) loadRepo(path string) (repos.Repo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cli: parsing repo path: %w", err)
 	}
+	return c.loadRepoFromUrl(url)
+}
+
+func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 	switch url.Scheme {
 	case "file":
 		return local.New(url.Path), nil

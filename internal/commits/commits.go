@@ -1,74 +1,168 @@
 package commits
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"path"
 	"sort"
 	"time"
 
-	"github.com/matthewmueller/chunky/internal/chunker"
-	"github.com/matthewmueller/chunky/internal/gzip"
+	"github.com/klauspost/compress/zstd"
+	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/chunky/internal/timeid"
-	"github.com/matthewmueller/virt"
 )
 
-func New() *Commit {
+func New(createdAt time.Time) *Commit {
 	return &Commit{
-		CreatedAt: time.Now(),
-		Files:     []*File{},
+		createdAt: createdAt,
 	}
 }
 
 type Commit struct {
+	createdAt time.Time
+	size      uint
+	files     []*File
+}
+
+func (c *Commit) Files() (files []*File) {
+	return c.files
+}
+
+type Pack struct {
+	ID    string
+	Files []*File
+}
+
+func (c *Commit) Packs() (packs []*Pack) {
+	packMap := make(map[string]*Pack)
+	for _, file := range c.files {
+		pack, ok := packMap[file.PackId]
+		if !ok {
+			pack = &Pack{ID: file.PackId}
+			packMap[file.PackId] = pack
+		}
+		pack.Files = append(pack.Files, file)
+	}
+	for _, pack := range packMap {
+		packs = append(packs, pack)
+	}
+	sort.Slice(packs, func(i, j int) bool {
+		return packs[i].ID < packs[j].ID
+	})
+	return packs
+}
+
+func (c *Commit) ID() string {
+	return timeid.Encode(c.createdAt)
+}
+
+func (c *Commit) Size() string {
+	return fmt.Sprintf("%d", c.size)
+}
+
+type commitState struct {
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	Checksum  string    `json:"checksum,omitempty"`
-	Size      uint64    `json:"size,omitempty"`
-	Files     []*File
+	Size      uint      `json:"size,omitempty"`
+	Files     []*File   `json:"files,omitempty"`
 }
 
-func (c *Commit) File(path string, info fs.FileInfo) *File {
-	file := findFile(c, path)
-	if file == nil {
-		file = &File{Path: path}
-		c.Files = append(c.Files, file)
+func (c *commitState) Verify() error {
+	checksum := sha256.New()
+	for _, file := range c.Files {
+		checksum.Write([]byte(file.Id))
 	}
-	file.Mode = info.Mode()
-	file.ModTime = info.ModTime().UTC()
-	file.Size = info.Size()
-	return file
-}
-
-func (c *Commit) Hash() string {
-	return timeid.Encode(c.CreatedAt.UTC())
+	if c.Checksum != hex.EncodeToString(checksum.Sum(nil)) {
+		return fmt.Errorf("commits: checksum mismatch")
+	}
+	return nil
 }
 
 type File struct {
-	Path    string      `json:"path,omitempty"`
-	Mode    fs.FileMode `json:"mode,omitempty"`
-	ModTime time.Time   `json:"modtime,omitempty"`
-	Size    int64       `json:"size,omitempty"`
-	Objects []string    `json:"objects,omitempty"`
+	Path   string `json:"path,omitempty"`
+	Size   uint   `json:"size,omitempty"`
+	Id     string `json:"id,omitempty"`
+	PackId string `json:"pack_id,omitempty"`
 }
 
-func (f *File) Add(object string) {
-	f.Objects = append(f.Objects, object)
+func findFile(commit *Commit, path string) *File {
+	for _, file := range commit.files {
+		if file.Path == path {
+			return file
+		}
+	}
+	return nil
+}
+
+func (c *Commit) Add(file *File) {
+	if findFile(c, file.Path) != nil {
+		return
+	}
+	c.files = append(c.files, file)
+	c.size += file.Size
+}
+
+func (c *Commit) Pack() ([]byte, error) {
+	out := new(bytes.Buffer)
+	enc, err := zstd.NewWriter(out)
+	if err != nil {
+		return nil, err
+	}
+	checksum := sha256.New()
+	files := c.Files()
+	for _, file := range files {
+		checksum.Write([]byte(file.Id))
+	}
+	if err := json.NewEncoder(enc).Encode(&commitState{
+		CreatedAt: c.createdAt,
+		Checksum:  hex.EncodeToString(checksum.Sum(nil)),
+		Size:      c.size,
+		Files:     files,
+	}); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func Unpack(data []byte) (*Commit, error) {
+	dec, err := zstd.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer dec.Close()
+	var state commitState
+	if err := json.NewDecoder(dec).Decode(&state); err != nil {
+		return nil, err
+	}
+	if err := state.Verify(); err != nil {
+		return nil, err
+	}
+	return &Commit{
+		createdAt: state.CreatedAt,
+		size:      state.Size,
+		files:     state.Files,
+	}, nil
 }
 
 func resolveRevision(ctx context.Context, repo repos.Repo, revision string) (sha string, err error) {
 	// Try to download the commit directly
-	if _, err := repos.Download(ctx, repo, "commits/"+revision); err == nil {
+	if _, err := repos.Download(ctx, repo, path.Join("commits", revision)); err == nil {
 		return revision, nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", fmt.Errorf("commits: unable to download commit: %w", err)
 	}
 	// Try to download the tag
-	tag, err := repos.Download(ctx, repo, "tags/"+revision)
+	tag, err := repos.Download(ctx, repo, path.Join("tags", revision))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return "", fmt.Errorf("commits: revision not found: %s", revision)
@@ -78,46 +172,12 @@ func resolveRevision(ctx context.Context, repo repos.Repo, revision string) (sha
 	return string(tag.Data), nil
 }
 
-type writtenCommit struct {
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	Checksum  string    `json:"checksum,omitempty"`
-	Size      uint64    `json:"size,omitempty"`
-	Objects   []string  `json:"objects,omitempty"`
-}
-
 func read(ctx context.Context, repo repos.Repo, path string) (*Commit, error) {
 	commitFile, err := repos.Download(ctx, repo, path)
 	if err != nil {
 		return nil, err
 	}
-	var wc writtenCommit
-	if err := json.Unmarshal(commitFile.Data, &wc); err != nil {
-		return nil, fmt.Errorf("commits: unable to unmarshal commit: %w", err)
-	}
-	commit := &Commit{
-		CreatedAt: wc.CreatedAt,
-		Checksum:  wc.Checksum,
-		Size:      wc.Size,
-	}
-	// Download all the files data
-	var filesData []byte
-	for _, object := range wc.Objects {
-		objectPath := fmt.Sprintf("objects/%s/%s", object[:2], object[2:])
-		dataFile, err := repos.Download(ctx, repo, objectPath)
-		if err != nil {
-			return nil, fmt.Errorf("commits: unable to download object %q: %w", object, err)
-		}
-		decompressed, err := gzip.Decompress(dataFile.Data)
-		if err != nil {
-			return nil, fmt.Errorf("commits: unable to decompress object %q: %w", object, err)
-		}
-		filesData = append(filesData, decompressed...)
-	}
-	// Unmarshal the files data into commit files
-	if err := json.Unmarshal(filesData, &commit.Files); err != nil {
-		return nil, fmt.Errorf("commits: unable to unmarshal files: %w", err)
-	}
-	return commit, nil
+	return Unpack(commitFile.Data)
 }
 
 func Read(ctx context.Context, repo repos.Repo, revision string) (*Commit, error) {
@@ -145,18 +205,9 @@ func ReadAll(ctx context.Context, repo repos.Repo) (commits []*Commit, err error
 		return nil, err
 	}
 	sort.Slice(commits, func(i, j int) bool {
-		return commits[i].CreatedAt.After(commits[j].CreatedAt)
+		return commits[i].createdAt.After(commits[j].createdAt)
 	})
 	return commits, nil
-}
-
-func findFile(commit *Commit, path string) *File {
-	for _, file := range commit.Files {
-		if file.Path == path {
-			return file
-		}
-	}
-	return nil
 }
 
 func FindFile(commit *Commit, path string) (*File, error) {
@@ -167,61 +218,14 @@ func FindFile(commit *Commit, path string) (*File, error) {
 	return file, nil
 }
 
-func ReadFile(ctx context.Context, repo repos.Repo, file *File) (*virt.File, error) {
-	vfile := &virt.File{
-		Path:    file.Path,
-		Mode:    file.Mode,
-		ModTime: file.ModTime,
-	}
-	for _, object := range file.Objects {
-		objectPath := fmt.Sprintf("objects/%s/%s", object[:2], object[2:])
-		dataFile, err := repos.Download(ctx, repo, objectPath)
-		if err != nil {
-			return nil, fmt.Errorf("commits: unable to download object %q: %w", object, err)
-		}
-		decompressed, err := gzip.Decompress(dataFile.Data)
-		if err != nil {
-			return nil, fmt.Errorf("commits: unable to decompress object %q: %w", object, err)
-		}
-		vfile.Data = append(vfile.Data, decompressed...)
-	}
-	return vfile, nil
-}
-
-func Write(ctx context.Context, to virt.FS, commit *Commit) error {
-	wc := writtenCommit{
-		CreatedAt: commit.CreatedAt.UTC(),
-		Checksum:  commit.Checksum,
-		Size:      commit.Size,
-	}
-	fileData, err := json.MarshalIndent(commit.Files, "", "  ")
+func ReadFile(ctx context.Context, repo repos.Repo, file *File) (*packs.File, error) {
+	packFile, err := repos.Download(ctx, repo, path.Join("packs", file.PackId))
 	if err != nil {
-		return fmt.Errorf("commits: unable to marshal files: %w", err)
+		return nil, fmt.Errorf("commits: unable to download pack %q: %w", file.PackId, err)
 	}
-	chunker := chunker.New(fileData)
-	for {
-		chunk, err := chunker.Chunk()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return fmt.Errorf("commits: unable to chunk files: %w", err)
-		}
-		hash := chunk.Hash()
-		fpath := fmt.Sprintf("objects/%s/%s", hash[:2], hash[2:])
-		compressed, err := gzip.Compress(chunk.Data)
-		if err != nil {
-			return fmt.Errorf("commits: unable to compress object %q: %w", hash, err)
-		}
-		if err := to.WriteFile(fpath, compressed, 0644); err != nil {
-			return fmt.Errorf("commits: unable to write object %q: %w", hash, err)
-		}
-		wc.Objects = append(wc.Objects, hash)
-	}
-	data, err := json.MarshalIndent(wc, "", "  ")
+	pack, err := packs.Unpack(packFile.Data)
 	if err != nil {
-		return fmt.Errorf("commits: unable to marshal commit: %w", err)
+		return nil, fmt.Errorf("commits: unable to unpack pack %q: %w", file.PackId, err)
 	}
-	commitPath := path.Join("commits", commit.Hash())
-	return to.WriteFile(commitPath, data, 0644)
+	return pack.Read(file.Path)
 }

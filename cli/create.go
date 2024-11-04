@@ -5,6 +5,7 @@ import (
 	"io/fs"
 
 	"github.com/livebud/cli"
+	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/virt"
 )
 
@@ -19,11 +20,19 @@ func (c *Create) Command(cli cli.Command) cli.Command {
 }
 
 func (c *CLI) Create(ctx context.Context, in *Create) error {
-	repo, err := c.loadRepo(in.Repo)
+	repoUrl, err := repos.Parse(in.Repo)
 	if err != nil {
 		return err
 	}
+	repo, err := c.loadRepoFromUrl(repoUrl)
+	if err != nil {
+		return err
+	}
+	// Create the cache
 	tree := virt.Tree{}
+	tree["indexes"] = &virt.File{
+		Mode: fs.ModeDir | 0755,
+	}
 	tree["commits"] = &virt.File{
 		Mode: fs.ModeDir | 0755,
 	}

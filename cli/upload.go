@@ -2,19 +2,19 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
+	"path"
 	"time"
 
 	"github.com/livebud/cli"
-	"github.com/matthewmueller/chunky/internal/chunker"
+	"github.com/matthewmueller/chunky/internal/caches"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/gitignore"
-	"github.com/matthewmueller/chunky/internal/gzip"
+	"github.com/matthewmueller/chunky/internal/packs"
+	"github.com/matthewmueller/chunky/internal/repos"
+	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/virt"
 )
 
@@ -47,7 +47,18 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 	if err := in.Validate(); err != nil {
 		return fmt.Errorf("cli: validating upload: %w", err)
 	}
-	repo, err := c.loadRepo(in.To)
+
+	repoUrl, err := repos.Parse(in.To)
+	if err != nil {
+		return err
+	}
+
+	repo, err := c.loadRepoFromUrl(repoUrl)
+	if err != nil {
+		return err
+	}
+
+	cache, err := caches.Download(ctx, repo, repoUrl)
 	if err != nil {
 		return err
 	}
@@ -58,13 +69,10 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 	}
 
 	ignore := gitignore.FromFS(fsys)
-
-	tree := virt.Tree{}
-	commit := commits.New()
-	commit.CreatedAt = time.Now()
-
-	checksum := sha256.New()
-	size := uint64(0)
+	createdAt := time.Now().UTC()
+	commit := commits.New(createdAt)
+	commitId := commit.ID()
+	pack := packs.New()
 
 	// Walk over the files, chunk them and add them to the file system we're going
 	// to upload. We'll also add each file to the commit object.
@@ -75,65 +83,104 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		} else if d.IsDir() || ignore(path) {
 			return nil
 		}
+
+		file, err := fsys.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
 		data, err := fs.ReadFile(fsys, path)
 		if err != nil {
 			return err
 		}
-		info, err := d.Info()
+		fileHash := sha256.Hash(data)
+
+		info, err := file.Stat()
 		if err != nil {
 			return err
 		}
-		file := commit.File(path, info)
-		checksum.Write(data)
-		size += uint64(info.Size())
 
-		// create a chunker
-		chunker := chunker.New(data)
-		for {
-			chunk, err := chunker.Chunk()
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				return err
-			}
-			hash := chunk.Hash()
-			fpath := fmt.Sprintf("objects/%s/%s", hash[:2], hash[2:])
-			compressed, err := gzip.Compress(chunk.Data)
-			if err != nil {
-				return err
-			}
-			tree[fpath] = &virt.File{
-				Data: compressed,
-				Mode: info.Mode(),
-			}
-			file.Add(hash)
+		// Check if the file is already in the pack
+		// TODO: right now this will duplicate content when the file path in the
+		// pack is different from the file path in the commit. We should add a
+		// way to alias files in the pack to other packs.
+		if commitFile, ok := cache.Get(fileHash); ok && commitFile.Path == path {
+			commit.Add(&commits.File{
+				Path:   path,
+				Size:   uint(info.Size()),
+				Id:     fileHash,
+				PackId: commitFile.PackId,
+			})
+			return nil
 		}
+
+		entry := &packs.File{
+			Path:    path,
+			Mode:    info.Mode(),
+			ModTime: info.ModTime(),
+			Data:    data,
+		}
+
+		// Add the entry to the pack
+		if err := pack.Add(entry); err != nil {
+			return err
+		}
+
+		// Add the file to the commit
+		commit.Add(&commits.File{
+			Path:   path,
+			Id:     fileHash,
+			PackId: commitId,
+			Size:   uint(info.Size()),
+		})
+
 		return nil
 	}); err != nil {
 		return err
 	}
 
-	// add the checksum to the commit
-	commit.Checksum = hex.EncodeToString(checksum.Sum(nil))
-	commit.Size = size
+	tree := virt.Tree{}
 
-	// add the commit file
-	if err := commits.Write(ctx, tree, commit); err != nil {
-		return fmt.Errorf("cli: unable to write commit: %w", err)
+	// Add the pack to the tree
+	packData, err := pack.Pack()
+	if err != nil {
+		return err
+	}
+	if len(packData) > 0 {
+		tree[path.Join("packs", commitId)] = &virt.File{
+			Data:    packData,
+			Mode:    0644,
+			ModTime: createdAt,
+		}
+	}
+
+	// Add the commit to the tree
+	commitData, err := commit.Pack()
+	if err != nil {
+		return err
+	}
+	tree[path.Join("commits", commitId)] = &virt.File{
+		Data:    commitData,
+		Mode:    0644,
+		ModTime: createdAt,
+	}
+
+	// Add the commit to the cache
+	if err := cache.Set(commitId, commit); err != nil {
+		return err
 	}
 
 	// Add the latest ref
-	commitHash := commit.Hash()
 	tree["tags/latest"] = &virt.File{
-		Data: []byte(commitHash),
+		Data: []byte(commitId),
 		Mode: 0644,
 	}
 
 	// Tag the revision
 	if in.Tag != nil {
 		tree[fmt.Sprintf("tags/%s", *in.Tag)] = &virt.File{
-			Data: []byte(commitHash),
+			Data: []byte(commitId),
 			Mode: 0644,
 		}
 	}

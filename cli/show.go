@@ -31,7 +31,7 @@ func (c *CLI) Show(ctx context.Context, in *Show) error {
 		return err
 	}
 	fsys := virt.Map{}
-	for _, file := range commit.Files {
+	for _, file := range commit.Files() {
 		fsys[file.Path] = ""
 	}
 	tree, err := virt.Print(fsys)

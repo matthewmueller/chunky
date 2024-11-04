@@ -2,12 +2,11 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/internal/commits"
+	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/virt"
 )
 
@@ -50,19 +49,23 @@ func (c *CLI) Download(ctx context.Context, in *Download) error {
 
 	// Download into a virtual tree
 	tree := virt.Tree{}
-	checksum := sha256.New()
-	for _, file := range commit.Files {
-		vfile, err := commits.ReadFile(ctx, repo, file)
+	for _, commitPack := range commit.Packs() {
+		pack, err := packs.Read(ctx, repo, commitPack.ID)
 		if err != nil {
-			return fmt.Errorf("cli: unable to download file %q: %w", file.Path, err)
+			return fmt.Errorf("cli: unable to download pack %q: %w", commitPack.ID, err)
 		}
-		tree[file.Path] = vfile
-		checksum.Write(vfile.Data)
-	}
-
-	// Verify the checksum
-	if commit.Checksum != hex.EncodeToString(checksum.Sum(nil)) {
-		return fmt.Errorf("cli: checksum mismatch for commit %q", in.Revision)
+		for _, file := range commitPack.Files {
+			packFile, err := pack.Read(file.Path)
+			if err != nil {
+				return fmt.Errorf("cli: unable to read file %q: %w", file.Path, err)
+			}
+			tree[file.Path] = &virt.File{
+				Path:    file.Path,
+				Data:    packFile.Data,
+				Mode:    packFile.Mode,
+				ModTime: packFile.ModTime,
+			}
+		}
 	}
 
 	// Write the virtual tree to the filesystem

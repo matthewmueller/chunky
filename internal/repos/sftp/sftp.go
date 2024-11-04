@@ -194,7 +194,8 @@ func (c *Client) uploadFile(from fs.FS, localPath, remotePath string, mode fs.Fi
 	}
 
 	// Copy the file
-	if _, err := io.Copy(remoteFile, localFile); err != nil {
+	_, err = io.Copy(remoteFile, localFile)
+	if err != nil {
 		return fmt.Errorf("sftp: unable to copy file %q: %w", localPath, err)
 	}
 
@@ -245,6 +246,9 @@ func (c *Client) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error 
 	walker := c.sftp.Walk(filepath.Join(c.dir, dir))
 	for walker.Step() {
 		if err := walker.Err(); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			return fmt.Errorf("sftp: unable to walk %q: %w", dir, err)
 		}
 		info := walker.Stat()
