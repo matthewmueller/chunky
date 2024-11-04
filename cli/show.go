@@ -14,7 +14,7 @@ type Show struct {
 	Revision string
 }
 
-func (s *Show) Command(cli cli.Command) cli.Command {
+func (s *Show) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("show", "show a revision")
 	cmd.Arg("repo", "repository to show").String(&s.Repo)
 	cmd.Arg("revision", "revision to show").String(&s.Revision)

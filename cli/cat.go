@@ -14,7 +14,7 @@ type Cat struct {
 	Path     string
 }
 
-func (c *Cat) Command(cli cli.Command) cli.Command {
+func (c *Cat) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("cat", "show a file")
 	cmd.Arg("repo", "repository to show").String(&c.Repo)
 	cmd.Arg("revision", "revision to show").String(&c.Revision)

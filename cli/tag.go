@@ -15,7 +15,7 @@ type Tag struct {
 	Tag      string
 }
 
-func (t *Tag) Command(cli cli.Command) cli.Command {
+func (t *Tag) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("tag", "tag a commit")
 	cmd.Arg("repo", "repository to tag").String(&t.Repo)
 	cmd.Arg("revision", "revision to tag").String(&t.Revision)

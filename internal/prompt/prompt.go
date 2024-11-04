@@ -10,39 +10,56 @@ import (
 	"github.com/howeyc/gopass"
 )
 
+// Prompter interface
+type Prompter interface {
+	String(prompt string, args ...interface{}) string
+	StringRequired(prompt string, args ...interface{}) string
+	Confirm(prompt string, args ...interface{}) bool
+	Choose(prompt string, list []string) int
+	Password(prompt string, args ...interface{}) (string, error)
+}
+
+// Default prompter
+func Default() Prompter {
+	return prompter{}
+}
+
+type prompter struct{}
+
 // String prompt.
-func String(prompt string, args ...interface{}) string {
+func (prompter) String(prompt string, args ...interface{}) string {
 	fmt.Printf(prompt, args...)
 	s, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	return strings.TrimRight(s, "\r\n")
 }
 
 // StringRequired prompt (required).
-func StringRequired(prompt string, args ...interface{}) string {
-	s := String(prompt, args...)
+func (p prompter) StringRequired(prompt string, args ...interface{}) string {
+retry:
+	s := p.String(prompt, args...)
 
 	if strings.Trim(s, " ") == "" {
-		return StringRequired(prompt)
+		goto retry
 	}
 
 	return s
 }
 
 // Confirm continues prompting until the input is boolean-ish.
-func Confirm(prompt string, args ...interface{}) bool {
-	s := String(prompt, args...)
+func (p prompter) Confirm(prompt string, args ...interface{}) bool {
+	s := p.String(prompt, args...)
 	switch s {
 	case "yes", "y", "Y":
 		return true
 	case "no", "n", "N":
 		return false
 	default:
-		return Confirm(prompt, args...)
+		return p.Confirm(prompt, args...)
 	}
 }
 
 // Choose prompts for a single selection from `list`, returning in the index.
-func Choose(prompt string, list []string) int {
+func (p prompter) Choose(prompt string, list []string) int {
 	fmt.Println()
 	for i, val := range list {
 		fmt.Printf("  %d) %s\n", i+1, val)
@@ -52,7 +69,7 @@ func Choose(prompt string, list []string) int {
 	i := -1
 
 	for {
-		s := String(prompt)
+		s := p.String(prompt)
 
 		// index
 		n, err := strconv.Atoi(s)
@@ -75,28 +92,19 @@ func Choose(prompt string, list []string) int {
 	return i
 }
 
-// Password prompt.
-func Password(prompt string, args ...interface{}) (string, error) {
-	fmt.Printf(prompt, args...)
-
-	b, err := gopass.GetPasswd()
-	if err != nil {
-		return "", err
-	}
-
-	return string(b), nil
-}
-
-// PasswordMasked prompt with mask.
-func PasswordMasked(prompt string, args ...interface{}) (string, error) {
+// Password prompt with mask.
+func (prompter) Password(prompt string, args ...interface{}) (string, error) {
+retry:
 	fmt.Printf(prompt, args...)
 
 	b, err := gopass.GetPasswdMasked()
 	if err != nil {
 		return "", err
+	} else if len(b) == 0 {
+		goto retry
 	}
-	return string(b), nil
 
+	return string(b), nil
 }
 
 // index of `s` in `list`.

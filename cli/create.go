@@ -13,7 +13,7 @@ type Create struct {
 	Repo string
 }
 
-func (c *Create) Command(cli cli.Command) cli.Command {
+func (c *Create) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("create", "create a new repository")
 	cmd.Arg("path", "path to the new repository").String(&c.Repo)
 	return cmd

@@ -13,7 +13,7 @@ type List struct {
 	Repo string
 }
 
-func (l *List) Command(cli cli.Command) cli.Command {
+func (l *List) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("list", "list repository")
 	cmd.Arg("repo", "repo to list from").String(&l.Repo)
 	return cmd

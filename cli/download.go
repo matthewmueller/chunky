@@ -13,18 +13,16 @@ import (
 type Download struct {
 	From     string
 	To       string
-	Subpaths []string
 	Revision string
 	Sync     bool
 }
 
-func (d *Download) Command(cli cli.Command) cli.Command {
+func (d *Download) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("download", "download a directory from a repository")
 	cmd.Arg("from", "repository to download from").String(&d.From)
 	cmd.Arg("revision", "revision to download").String(&d.Revision)
 	cmd.Arg("to", "directory to download to").String(&d.To)
-	cmd.Args("subpaths", "subpaths to download").Strings(&d.Subpaths).Default()
-	cmd.Flag("sync", "sync the repository before downloading").Bool(&d.Sync).Default(false)
+	cmd.Flag("sync", "sync the directory").Bool(&d.Sync).Default(false)
 	return cmd
 }
 
@@ -69,5 +67,8 @@ func (c *CLI) Download(ctx context.Context, in *Download) error {
 	}
 
 	// Write the virtual tree to the filesystem
+	if in.Sync {
+		return virt.SyncFS(tree, to)
+	}
 	return virt.WriteFS(tree, to)
 }

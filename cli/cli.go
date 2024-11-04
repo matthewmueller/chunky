@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path/filepath"
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/internal/prompt"
@@ -19,7 +20,12 @@ import (
 
 func Run() int {
 	log := logs.Default()
-	cli := Default(log)
+	cli := &CLI{
+		Prompt: prompt.Default(),
+		Log:    log,
+		Stdout: os.Stdout,
+		Dir:    ".",
+	}
 	ctx := context.Background()
 	err := cli.Parse(ctx, os.Args[1:]...)
 	if err != nil {
@@ -29,22 +35,20 @@ func Run() int {
 	return 0
 }
 
-func Default(log *slog.Logger) *CLI {
+func Default() *CLI {
 	return &CLI{
-		Dir:    ".",
-		Stdin:  os.Stdin,
+		Prompt: prompt.Default(),
+		Log:    logs.Default(),
 		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-		Env:    map[string]string{},
+		Dir:    ".",
 	}
 }
 
 type CLI struct {
-	Dir    string
-	Stdin  io.Reader
+	Log    *slog.Logger
 	Stdout io.Writer
-	Stderr io.Writer
-	Env    map[string]string
+	Dir    string
+	Prompt prompt.Prompter
 }
 
 func (c *CLI) loadRepo(path string) (repos.Repo, error) {
@@ -60,7 +64,7 @@ func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 	case "file":
 		return local.New(url.Path), nil
 	case "sftp", "ssh":
-		signer, err := sftp.Parse(url, c.onPassword)
+		signer, err := sftp.Parse(url, c.Prompt.Password)
 		if err != nil {
 			return nil, err
 		}
@@ -70,19 +74,8 @@ func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 	}
 }
 
-func (c *CLI) onPassword() (string, error) {
-retry:
-	password, err := prompt.PasswordMasked("Enter your SSH key password: ")
-	if err != nil {
-		return "", err
-	} else if password == "" {
-		goto retry
-	}
-	return password, nil
-}
-
 func (c *CLI) loadFS(path string) (virt.FS, error) {
-	return virt.OS(path), nil
+	return virt.OS(filepath.Join(c.Dir, path)), nil
 }
 
 func (c *CLI) Parse(ctx context.Context, args ...string) error {
@@ -90,32 +83,32 @@ func (c *CLI) Parse(ctx context.Context, args ...string) error {
 
 	{ // new <repo>
 		new := &Create{}
-		cmd := new.Command(cli)
+		cmd := new.command(cli)
 		cmd.Run(func(ctx context.Context) error {
 			return c.Create(ctx, new)
 		})
 	}
 
-	{ // upload [--tag=<tag> --message=<msg>] <from> <to> [subpaths...]
+	{ // upload [--tag=<tag>] <from> <to>
 		upload := &Upload{}
-		cmd := upload.Command(cli)
+		cmd := upload.command(cli)
 		cmd.Run(func(ctx context.Context) error {
 			return c.Upload(ctx, upload)
 		})
 
 	}
 
-	{ // download [--ref=<ref=latest>] <from> <to> [subpaths...]
+	{ // download <from> <to> <revision> [subpaths...]
 		download := &Download{}
-		cmd := download.Command(cli)
+		cmd := download.command(cli)
 		cmd.Run(func(ctx context.Context) error {
 			return c.Download(ctx, download)
 		})
 	}
 
-	{ // list
+	{ // list <repo>
 		list := &List{}
-		cmd := list.Command(cli)
+		cmd := list.command(cli)
 		cmd.Run(func(ctx context.Context) error {
 			return c.List(ctx, list)
 		})
@@ -123,7 +116,7 @@ func (c *CLI) Parse(ctx context.Context, args ...string) error {
 
 	{ // show <repo> <revision>
 		show := &Show{}
-		cmd := show.Command(cli)
+		cmd := show.command(cli)
 		cmd.Run(func(ctx context.Context) error {
 			return c.Show(ctx, show)
 		})
@@ -131,15 +124,15 @@ func (c *CLI) Parse(ctx context.Context, args ...string) error {
 
 	{ // cat <repo> <revision> <path>
 		cat := &Cat{}
-		cmd := cat.Command(cli)
+		cmd := cat.command(cli)
 		cmd.Run(func(ctx context.Context) error {
 			return c.Cat(ctx, cat)
 		})
 	}
 
-	{ // tag <repo> <commit> <tag>
+	{ // tag <repo> <revision> <tag>
 		tag := &Tag{}
-		cmd := tag.Command(cli)
+		cmd := tag.command(cli)
 		cmd.Run(func(ctx context.Context) error {
 			return c.Tag(ctx, tag)
 		})

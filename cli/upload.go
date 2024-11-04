@@ -19,19 +19,15 @@ import (
 )
 
 type Upload struct {
-	From     string
-	To       string
-	Subpaths []string
-	Tag      *string
-	Message  string
+	From string
+	To   string
+	Tag  *string
 }
 
-// upload [--tag=<tag> --message=<msg>] <from> <to> [subpaths...]
-func (u *Upload) Command(cli cli.Command) cli.Command {
+func (u *Upload) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("upload", "upload a directory to a repository")
 	cmd.Arg("from", "directory to upload").String(&u.From)
 	cmd.Arg("repo", "repository to upload to").String(&u.To)
-	cmd.Args("subpaths", "subpaths to upload").Strings(&u.Subpaths).Default()
 	cmd.Flag("tag", "tag the revision").Short('t').Optional().String(&u.Tag)
 	return cmd
 }
