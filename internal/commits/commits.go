@@ -19,15 +19,17 @@ import (
 	"github.com/matthewmueller/chunky/internal/timeid"
 )
 
-func New(createdAt time.Time) *Commit {
+func New(user string, createdAt time.Time) *Commit {
 	return &Commit{
+		user:      user,
 		createdAt: createdAt,
 	}
 }
 
 type Commit struct {
+	user      string
 	createdAt time.Time
-	size      uint
+	size      uint64
 	files     []*File
 }
 
@@ -63,14 +65,23 @@ func (c *Commit) ID() string {
 	return timeid.Encode(c.createdAt)
 }
 
-func (c *Commit) Size() string {
-	return fmt.Sprintf("%d", c.size)
+func (c *Commit) CreatedAt() time.Time {
+	return c.createdAt
+}
+
+func (c *Commit) Size() uint64 {
+	return uint64(c.size)
+}
+
+func (c *Commit) User() string {
+	return c.user
 }
 
 type commitState struct {
+	User      string    `json:"user,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	Checksum  string    `json:"checksum,omitempty"`
-	Size      uint      `json:"size,omitempty"`
+	Size      uint64    `json:"size,omitempty"`
 	Files     []*File   `json:"files,omitempty"`
 }
 
@@ -87,7 +98,7 @@ func (c *commitState) Verify() error {
 
 type File struct {
 	Path   string `json:"path,omitempty"`
-	Size   uint   `json:"size,omitempty"`
+	Size   uint64 `json:"size,omitempty"`
 	Id     string `json:"id,omitempty"`
 	PackId string `json:"pack_id,omitempty"`
 }
@@ -121,6 +132,7 @@ func (c *Commit) Pack() ([]byte, error) {
 		checksum.Write([]byte(file.Id))
 	}
 	if err := json.NewEncoder(enc).Encode(&commitState{
+		User:      c.user,
 		CreatedAt: c.createdAt,
 		Checksum:  hex.EncodeToString(checksum.Sum(nil)),
 		Size:      c.size,
@@ -148,6 +160,7 @@ func Unpack(data []byte) (*Commit, error) {
 		return nil, err
 	}
 	return &Commit{
+		user:      state.User,
 		createdAt: state.CreatedAt,
 		size:      state.Size,
 		files:     state.Files,

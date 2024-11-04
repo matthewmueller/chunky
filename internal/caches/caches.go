@@ -54,6 +54,10 @@ func Load(url *url.URL) (*Cache, error) {
 	}
 
 	dir := filepath.Join(cacheDir, "chunky", pathFromUrl(url))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+
 	fsys := virt.OS(dir)
 	cache := &Cache{
 		fsys,

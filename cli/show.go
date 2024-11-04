@@ -3,9 +3,12 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
+	"text/tabwriter"
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/internal/commits"
+	"github.com/matthewmueller/chunky/internal/tags"
 	"github.com/matthewmueller/virt"
 )
 
@@ -26,10 +29,23 @@ func (c *CLI) Show(ctx context.Context, in *Show) error {
 	if err != nil {
 		return err
 	}
+
+	// Write the commit
+	tagMap, err := tags.ReadMap(ctx, repo)
+	if err != nil {
+		return err
+	}
 	commit, err := commits.Read(ctx, repo, in.Revision)
 	if err != nil {
 		return err
 	}
+	writer := tabwriter.NewWriter(c.Stdout, 0, 0, 2, ' ', 0)
+	formatCommit(writer, c.Color, commit, tagMap)
+	if err := writer.Flush(); err != nil {
+		return err
+	}
+
+	// Write the file tree
 	fsys := virt.Map{}
 	for _, file := range commit.Files() {
 		fsys[file.Path] = ""
@@ -38,6 +54,9 @@ func (c *CLI) Show(ctx context.Context, in *Show) error {
 	if err != nil {
 		return err
 	}
+	lines := strings.Split(tree, "\n")
+	lines = lines[1:]
+	tree = strings.Join(lines, "\n")
 	fmt.Fprintln(c.Stdout, tree)
 	return nil
 }

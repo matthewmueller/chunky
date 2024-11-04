@@ -7,9 +7,14 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strings"
 
 	"github.com/livebud/cli"
+	"github.com/livebud/color"
+	"github.com/matthewmueller/chunky/internal/commits"
+	"github.com/matthewmueller/chunky/internal/humanize"
 	"github.com/matthewmueller/chunky/internal/prompt"
 	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/chunky/internal/repos/local"
@@ -21,10 +26,11 @@ import (
 func Run() int {
 	log := logs.Default()
 	cli := &CLI{
-		Prompt: prompt.Default(),
-		Log:    log,
-		Stdout: os.Stdout,
-		Dir:    ".",
+		log,
+		os.Stdout,
+		".",
+		prompt.Default(),
+		color.Default(),
 	}
 	ctx := context.Background()
 	err := cli.Parse(ctx, os.Args[1:]...)
@@ -37,10 +43,11 @@ func Run() int {
 
 func Default() *CLI {
 	return &CLI{
-		Prompt: prompt.Default(),
 		Log:    logs.Default(),
 		Stdout: os.Stdout,
 		Dir:    ".",
+		Prompt: prompt.Default(),
+		Color:  color.Default(),
 	}
 }
 
@@ -49,6 +56,7 @@ type CLI struct {
 	Stdout io.Writer
 	Dir    string
 	Prompt prompt.Prompter
+	Color  color.Writer
 }
 
 func (c *CLI) loadRepo(path string) (repos.Repo, error) {
@@ -76,6 +84,32 @@ func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 
 func (c *CLI) loadFS(path string) (virt.FS, error) {
 	return virt.OS(filepath.Join(c.Dir, path)), nil
+}
+
+func (c *CLI) getUser() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("cli: getting current user: %w", err)
+	}
+	if u.Name != "" {
+		return u.Name, nil
+	}
+	return u.Username, nil
+}
+
+func formatTags(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	return "(" + strings.Join(tags, ", ") + ")"
+}
+
+func formatCommit(writer io.Writer, color color.Writer, commit *commits.Commit, tagMap map[string][]string) {
+	commitId := commit.ID()
+	relTime := humanize.Time(commit.CreatedAt())
+	tags := tagMap[commitId]
+	size := humanize.Bytes(commit.Size())
+	writer.Write([]byte(fmt.Sprintf("%s\t%s\t%s\t%s\t%+v\n", color.Green(commitId), color.Green(formatTags(tags)), size, commit.User(), color.Dim(relTime))))
 }
 
 func (c *CLI) Parse(ctx context.Context, args ...string) error {

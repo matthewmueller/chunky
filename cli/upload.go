@@ -64,9 +64,14 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
+	user, err := c.getUser()
+	if err != nil {
+		return err
+	}
+
 	ignore := gitignore.FromFS(fsys)
 	createdAt := time.Now().UTC()
-	commit := commits.New(createdAt)
+	commit := commits.New(user, createdAt)
 	commitId := commit.ID()
 	pack := packs.New()
 
@@ -104,7 +109,7 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		if commitFile, ok := cache.Get(fileHash); ok && commitFile.Path == path {
 			commit.Add(&commits.File{
 				Path:   path,
-				Size:   uint(info.Size()),
+				Size:   uint64(info.Size()),
 				Id:     fileHash,
 				PackId: commitFile.PackId,
 			})
@@ -128,7 +133,7 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 			Path:   path,
 			Id:     fileHash,
 			PackId: commitId,
-			Size:   uint(info.Size()),
+			Size:   uint64(info.Size()),
 		})
 
 		return nil

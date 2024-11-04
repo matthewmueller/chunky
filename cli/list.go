@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"fmt"
+	"text/tabwriter"
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/internal/commits"
@@ -32,10 +32,9 @@ func (c *CLI) List(ctx context.Context, in *List) error {
 	if err != nil {
 		return err
 	}
+	writer := tabwriter.NewWriter(c.Stdout, 0, 0, 1, ' ', 0)
 	for _, commit := range commits {
-		commitId := commit.ID()
-		tags := tagMap[commitId]
-		fmt.Fprintf(c.Stdout, "%s %s %+v\n", commitId, commit.Size(), tags)
+		formatCommit(writer, c.Color, commit, tagMap)
 	}
-	return nil
+	return writer.Flush()
 }

@@ -28,15 +28,12 @@ func (c *CLI) Create(ctx context.Context, in *Create) error {
 	if err != nil {
 		return err
 	}
-	// Create the cache
+	// Create the repository
 	tree := virt.Tree{}
-	tree["indexes"] = &virt.File{
-		Mode: fs.ModeDir | 0755,
-	}
 	tree["commits"] = &virt.File{
 		Mode: fs.ModeDir | 0755,
 	}
-	tree["objects"] = &virt.File{
+	tree["packs"] = &virt.File{
 		Mode: fs.ModeDir | 0755,
 	}
 	tree["tags"] = &virt.File{
