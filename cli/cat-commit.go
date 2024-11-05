@@ -13,7 +13,7 @@ type CatCommit struct {
 }
 
 func (c *CatCommit) command(cli cli.Command) cli.Command {
-	cmd := cli.Command("cat-commit", "show a commit")
+	cmd := cli.Command("cat-commit", "show a commit").Advanced()
 	cmd.Arg("repo", "repository to show").String(&c.Repo)
 	cmd.Arg("revision", "commit or tag to show").String(&c.Revision)
 	return cmd

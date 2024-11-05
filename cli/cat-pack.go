@@ -13,7 +13,7 @@ type CatPack struct {
 }
 
 func (c *CatPack) command(cli cli.Command) cli.Command {
-	cmd := cli.Command("cat-pack", "show a pack")
+	cmd := cli.Command("cat-pack", "show a pack").Advanced()
 	cmd.Arg("repo", "repository to show").String(&c.Repo)
 	cmd.Arg("pack", "pack to show").String(&c.Pack)
 	return cmd

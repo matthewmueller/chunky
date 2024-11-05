@@ -14,7 +14,7 @@ type Clean struct {
 }
 
 func (c *Clean) command(cli cli.Command) cli.Command {
-	cmd := cli.Command("clean", "clean a repository and local cache")
+	cmd := cli.Command("clean", "clean a repository and local cache").Advanced()
 	cmd.Arg("repo", "repo path").String(&c.Repo)
 	return cmd
 }

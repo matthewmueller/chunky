@@ -15,7 +15,7 @@ type CatTag struct {
 }
 
 func (c *CatTag) command(cli cli.Command) cli.Command {
-	cmd := cli.Command("cat-tag", "show a tag")
+	cmd := cli.Command("cat-tag", "show a tag").Advanced()
 	cmd.Arg("repo", "repository to show").String(&c.Repo)
 	cmd.Arg("tag", "tag to show").String(&c.Tag)
 	return cmd
