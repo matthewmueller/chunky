@@ -1,4 +1,4 @@
-package gitignore
+package chunkyignore
 
 import (
 	"io/fs"
@@ -9,34 +9,29 @@ import (
 	gitignore "github.com/sabhiram/go-gitignore"
 )
 
-var alwaysIgnore = []string{
-	"node_modules",
+var defaultIgnores = []string{
 	".git",
 	".DS_Store",
 }
 
-var defaultIgnores = append([]string{}, alwaysIgnore...)
-
 var defaultIgnore = gitignore.CompileIgnoreLines(defaultIgnores...).MatchesPath
 
 func FromFS(fsys fs.FS) (ignore func(path string) bool) {
-	code, err := fs.ReadFile(fsys, ".gitignore")
+	code, err := fs.ReadFile(fsys, ".chunkyignore")
 	if err != nil {
 		return defaultIgnore
 	}
 	lines := strings.Split(string(code), "\n")
-	lines = append(lines, alwaysIgnore...)
 	ignorer := gitignore.CompileIgnoreLines(lines...)
 	return ignorer.MatchesPath
 }
 
 func From(dir string) (ignore func(path string) (skip bool)) {
-	code, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	code, err := os.ReadFile(filepath.Join(dir, ".chunkyignore"))
 	if err != nil {
 		return defaultIgnore
 	}
 	lines := strings.Split(string(code), "\n")
-	lines = append(lines, alwaysIgnore...)
 	ignorer := gitignore.CompileIgnoreLines(lines...)
 	return ignorer.MatchesPath
 }

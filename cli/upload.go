@@ -10,8 +10,8 @@ import (
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/internal/caches"
+	"github.com/matthewmueller/chunky/internal/chunkyignore"
 	"github.com/matthewmueller/chunky/internal/commits"
-	"github.com/matthewmueller/chunky/internal/gitignore"
 	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/chunky/internal/sha256"
@@ -74,7 +74,7 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	ignore := gitignore.FromFS(fsys)
+	ignore := chunkyignore.FromFS(fsys)
 	createdAt := time.Now().UTC()
 	commit := commits.New(user, createdAt)
 	commitId := commit.ID()
