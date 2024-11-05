@@ -1,3 +1,9 @@
+# 0.0.4 / 2024-11-04
+
+- add tools for introspection
+- simplify packfile using gob
+- change commit codec to gob
+
 # 0.0.3 / 2024-11-04
 
 - add some color
