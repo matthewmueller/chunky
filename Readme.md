@@ -12,7 +12,7 @@ Chunky uses content-defined-chunking (CDC) using Restic's [chunker library](http
 
 ### Upload data
 
-```sh
+```bash
 $ chunky upload . vagrant@127.0.0.1:2222/my-repo
 ```
 
@@ -22,7 +22,7 @@ This will create a directory `my-repo` in the `$HOME/vagrant` directory on your 
 
 ### List all versions
 
-```sh
+```bash
 $ chunky list vagrant@127.0.0.1:2222/my-repo
 20241105033915 (latest) 69kB Matt Mueller 39 minutes ago
 20241105033613          69kB Matt Mueller 42 minutes ago
@@ -38,14 +38,14 @@ This command lists all the versions on the `vagrant@127.0.0.1:2222/my-repo` remo
 
 ### Tag a revision
 
-```sh
-chunky tag vagrant@127.0.0.1:2222/my-repo 20241105033612 v0.0.1
+```bash
+$ chunky tag vagrant@127.0.0.1:2222/my-repo 20241105033612 v0.0.1
 ```
 
 This command tags the `20241105033612` commit with the `v0.0.1` tag
 
-```sh
-chunky list vagrant@127.0.0.1:2222/my-repo
+```bash
+$ chunky list vagrant@127.0.0.1:2222/my-repo
 20241105033915 (latest) 69kB Matt Mueller 39 minutes ago
 20241105033613          69kB Matt Mueller 42 minutes ago
 20241105033612 (v0.0.1) 69kB Matt Mueller 42 minutes ago
@@ -58,7 +58,7 @@ chunky list vagrant@127.0.0.1:2222/my-repo
 
 ### Download a revision
 
-```sh
+```bash
 $ chunky download vagrant@127.0.0.1:2222/my-repo v0.0.1 my-repo-v1
 ```
 
@@ -66,7 +66,7 @@ This command downloads the `v0.0.1` revision from the `vagrant@127.0.0.1:2222/my
 
 By default this overwrites any existing file, but will not delete local files that no longer exist in the remote repository. To fully sync `my-repo-v1` with the remote repository, include the `--sync` flag.
 
-```sh
+```bash
 $ chunky download --sync vagrant@127.0.0.1:2222/my-repo v0.0.1 my-repo-v1
 ```
 
@@ -78,13 +78,13 @@ Chunky ships with a CLI and programmatic API.
 
 You can install the CLI using Go with:
 
-```sh
+```bash
 go install github.com/matthewmueller/chunky/cmd/chunky@latest
 ```
 
 If that succeeds, you should be able to type `chunky` and see the help menu below.
 
-```sh
+```bash
 $ chunky
 
   Usage:
@@ -146,20 +146,20 @@ type Repo interface {
 
 First, clone the repo:
 
-```sh
+```bash
 git clone https://github.com/matthewmueller/chunky
 cd chunky
 ```
 
 Next, install dependencies:
 
-```sh
+```bash
 go mod tidy
 ```
 
 Finally, try running the tests:
 
-```sh
+```bash
 go test ./...
 ```
 
