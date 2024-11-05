@@ -10,7 +10,7 @@ Chunky uses content-defined-chunking (CDC) using Restic's [chunker library](http
 
 ## Examples
 
-### Upload data
+### Upload a directory
 
 ```bash
 $ chunky upload . vagrant@127.0.0.1:2222/my-repo
@@ -56,7 +56,7 @@ $ chunky list vagrant@127.0.0.1:2222/my-repo
 20241105032915          68kB Matt Mueller 49 minutes ago
 ```
 
-### Download a revision
+### Download a version
 
 ```bash
 $ chunky download vagrant@127.0.0.1:2222/my-repo v0.0.1 my-repo-v1
