@@ -1,3 +1,9 @@
+# 0.0.5 / 2024-11-04
+
+- .gitignore -> .chunkyignore
+- add a license and readme
+- mark cat-\* and clean command as advanced
+
 # 0.0.4 / 2024-11-04
 
 - add tools for introspection
