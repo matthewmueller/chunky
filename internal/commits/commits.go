@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path"
 	"sort"
@@ -120,40 +122,51 @@ func (c *Commit) Add(file *File) {
 	c.size += file.Size
 }
 
-func (c *Commit) Pack() ([]byte, error) {
-	out := new(bytes.Buffer)
-	enc, err := zstd.NewWriter(out)
-	if err != nil {
-		return nil, err
-	}
+func (c *Commit) state() *commitState {
 	checksum := sha256.New()
 	files := c.Files()
 	for _, file := range files {
 		checksum.Write([]byte(file.Id))
 	}
-	if err := json.NewEncoder(enc).Encode(&commitState{
+	return &commitState{
 		User:      c.user,
 		CreatedAt: c.createdAt,
 		Checksum:  hex.EncodeToString(checksum.Sum(nil)),
 		Size:      c.size,
-		Files:     files,
-	}); err != nil {
+		Files:     c.files,
+	}
+}
+
+func (c *Commit) Encode(w io.Writer) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(c.state())
+}
+
+func (c *Commit) Pack() ([]byte, error) {
+	out := new(bytes.Buffer)
+	writer, err := zstd.NewWriter(out)
+	if err != nil {
 		return nil, err
 	}
-	if err := enc.Close(); err != nil {
+	enc := gob.NewEncoder(writer)
+	if err := enc.Encode(c.state()); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil
 }
 
 func Unpack(data []byte) (*Commit, error) {
-	dec, err := zstd.NewReader(bytes.NewReader(data))
+	reader, err := zstd.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
-	defer dec.Close()
+	dec := gob.NewDecoder(reader)
 	var state commitState
-	if err := json.NewDecoder(dec).Decode(&state); err != nil {
+	if err := dec.Decode(&state); err != nil {
 		return nil, err
 	}
 	if err := state.Verify(); err != nil {

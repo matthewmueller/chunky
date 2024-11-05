@@ -19,9 +19,10 @@ import (
 )
 
 type Upload struct {
-	From string
-	To   string
-	Tag  *string
+	From     string
+	To       string
+	Tag      *string
+	UseCache bool
 }
 
 func (u *Upload) command(cli cli.Command) cli.Command {
@@ -29,6 +30,7 @@ func (u *Upload) command(cli cli.Command) cli.Command {
 	cmd.Arg("from", "directory to upload").String(&u.From)
 	cmd.Arg("repo", "repository to upload to").String(&u.To)
 	cmd.Flag("tag", "tag the revision").Short('t').Optional().String(&u.Tag)
+	cmd.Flag("cache", "use a cache").Bool(&u.UseCache).Default(true)
 	return cmd
 }
 
@@ -54,9 +56,12 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	cache, err := caches.Download(ctx, repo, repoUrl)
-	if err != nil {
-		return err
+	var cache caches.Cache = caches.None
+	if in.UseCache {
+		cache, err = caches.Download(ctx, repo, repoUrl)
+		if err != nil {
+			return err
+		}
 	}
 
 	fsys, err := c.loadFS(in.From)

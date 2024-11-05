@@ -164,11 +164,43 @@ func (c *CLI) Parse(ctx context.Context, args ...string) error {
 		})
 	}
 
+	{ // cat-pack <repo> <pack>
+		catPack := &CatPack{}
+		cmd := catPack.command(cli)
+		cmd.Run(func(ctx context.Context) error {
+			return c.CatPack(ctx, catPack)
+		})
+	}
+
+	{ // cat-commit <repo> <commit>
+		catCommit := &CatCommit{}
+		cmd := catCommit.command(cli)
+		cmd.Run(func(ctx context.Context) error {
+			return c.CatCommit(ctx, catCommit)
+		})
+	}
+
+	{ // cat-tag <repo> <tag>
+		catTag := &CatTag{}
+		cmd := catTag.command(cli)
+		cmd.Run(func(ctx context.Context) error {
+			return c.CatTag(ctx, catTag)
+		})
+	}
+
 	{ // tag <repo> <revision> <tag>
 		tag := &Tag{}
 		cmd := tag.command(cli)
 		cmd.Run(func(ctx context.Context) error {
 			return c.Tag(ctx, tag)
+		})
+	}
+
+	{ // clean <repo>
+		clean := &Clean{}
+		cmd := clean.command(cli)
+		cmd.Run(func(ctx context.Context) error {
+			return c.Clean(ctx, clean)
 		})
 	}
 
