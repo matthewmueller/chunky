@@ -22,7 +22,7 @@ func (c *CatTag) command(cli cli.Command) cli.Command {
 }
 
 func (c *CLI) CatTag(ctx context.Context, in *CatTag) error {
-	repo, err := c.loadRepo(in.Repo)
+	repo, err := c.loadRepo(ctx, in.Repo)
 	if err != nil {
 		return err
 	}

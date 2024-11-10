@@ -82,21 +82,36 @@ func Load(url *url.URL) (*Local, error) {
 		if de.IsDir() {
 			continue
 		}
-		data, err := fs.ReadFile(fsys, de.Name())
+		name := de.Name()
+		data, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			return nil, err
 		}
 		commit, err := commits.Unpack(data)
 		if err != nil {
+			if isCacheInvalid(err) {
+				// Remove the invalid cache file
+				if err := fsys.RemoveAll(name); err != nil {
+					return nil, err
+				}
+				continue
+			}
 			return nil, err
 		}
 		for _, file := range commit.Files() {
 			cache.files[file.Id] = file
 		}
-		cache.commits[de.Name()] = commit
+		cache.commits[name] = commit
 	}
 
 	return cache, nil
+}
+
+func isCacheInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.HasPrefix(err.Error(), "gob: ")
 }
 
 type Local struct {

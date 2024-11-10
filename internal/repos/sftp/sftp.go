@@ -21,7 +21,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func Parse(url *url.URL, onPassword func(msg string, args ...interface{}) (string, error)) (ssh.Signer, error) {
+func Parse(ctx context.Context, url *url.URL, onPassword func(ctx context.Context, prompt string) (string, error)) (ssh.Signer, error) {
 	keyFile := url.Query().Get("key")
 	if keyFile == "" {
 		home, err := os.UserHomeDir()
@@ -68,7 +68,7 @@ func Parse(url *url.URL, onPassword func(msg string, args ...interface{}) (strin
 		}
 
 		// Prompt the user
-		password, err := onPassword("Enter passphrase for " + keyFile + ": ")
+		password, err := onPassword(ctx, "Enter passphrase for "+keyFile+": ")
 		if err != nil {
 			return nil, err
 		}

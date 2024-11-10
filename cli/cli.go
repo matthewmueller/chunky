@@ -15,11 +15,11 @@ import (
 	"github.com/livebud/color"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/humanize"
-	"github.com/matthewmueller/chunky/internal/prompt"
 	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/chunky/internal/repos/local"
 	"github.com/matthewmueller/chunky/internal/repos/sftp"
 	"github.com/matthewmueller/logs"
+	"github.com/matthewmueller/prompter"
 	"github.com/matthewmueller/virt"
 )
 
@@ -29,7 +29,7 @@ func Run() int {
 		log,
 		os.Stdout,
 		".",
-		prompt.Default(),
+		prompter.Default(),
 		color.Default(),
 	}
 	ctx := context.Background()
@@ -46,7 +46,7 @@ func Default() *CLI {
 		Log:    logs.Default(),
 		Stdout: os.Stdout,
 		Dir:    ".",
-		Prompt: prompt.Default(),
+		Prompt: prompter.Default(),
 		Color:  color.Default(),
 	}
 }
@@ -55,24 +55,24 @@ type CLI struct {
 	Log    *slog.Logger
 	Stdout io.Writer
 	Dir    string
-	Prompt prompt.Prompter
+	Prompt *prompter.Prompt
 	Color  color.Writer
 }
 
-func (c *CLI) loadRepo(path string) (repos.Repo, error) {
+func (c *CLI) loadRepo(ctx context.Context, path string) (repos.Repo, error) {
 	url, err := repos.Parse(path)
 	if err != nil {
 		return nil, fmt.Errorf("cli: parsing repo path: %w", err)
 	}
-	return c.loadRepoFromUrl(url)
+	return c.loadRepoFromUrl(ctx, url)
 }
 
-func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
+func (c *CLI) loadRepoFromUrl(ctx context.Context, url *url.URL) (repos.Repo, error) {
 	switch url.Scheme {
 	case "file":
 		return local.New(url.Path), nil
 	case "sftp", "ssh":
-		signer, err := sftp.Parse(url, c.Prompt.Password)
+		signer, err := sftp.Parse(ctx, url, c.Prompt.Password)
 		if err != nil {
 			return nil, err
 		}

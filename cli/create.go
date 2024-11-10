@@ -24,7 +24,7 @@ func (c *CLI) Create(ctx context.Context, in *Create) error {
 	if err != nil {
 		return err
 	}
-	repo, err := c.loadRepoFromUrl(repoUrl)
+	repo, err := c.loadRepoFromUrl(ctx, repoUrl)
 	if err != nil {
 		return err
 	}

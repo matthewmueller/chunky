@@ -20,7 +20,7 @@ func (l *List) command(cli cli.Command) cli.Command {
 }
 
 func (c *CLI) List(ctx context.Context, in *List) error {
-	repo, err := c.loadRepo(in.Repo)
+	repo, err := c.loadRepo(ctx, in.Repo)
 	if err != nil {
 		return err
 	}

@@ -21,21 +21,12 @@ import (
 func New() *Pack {
 	return &Pack{
 		records: []*record{},
-		// files: map[string]*record{},
-		// blobs: map[string]*blobState{},
 	}
 }
 
 type Pack struct {
 	records []*record
 }
-
-// type header struct {
-// 	Kind   kind   `json:"kind,omitempty"`
-// 	ID     string `json:"id,omitempty"`
-// 	Offset uint   `json:"offset,omitempty"`
-// 	Length uint   `json:"length,omitempty"`
-// }
 
 type kind uint8
 
@@ -94,16 +85,6 @@ func (p *Pack) Add(file *File) error {
 	// Write the file state
 	p.records = append(p.records, state)
 
-	// fileData, err := json.Marshal(state)
-	// if err != nil {
-	// 	return fmt.Errorf("packs: unable to marshal file state: %w", err)
-	// }
-
-	// // Add the file
-	// if err := p.addFile(file.Path, fileData); err != nil {
-	// 	return fmt.Errorf("packs: unable to add file: %w", err)
-	// }
-
 	return nil
 }
 
@@ -113,38 +94,8 @@ func (p *Pack) addBlob(blobHash string, data []byte) error {
 		Kind: kindBlob,
 		Data: data,
 	})
-	// // Create a header
-	// header := &header{kindBlob, blobHash, uint(p.buffer.Len()), 0}
-	// p.headers = append(p.headers, header)
-
-	// // Write the data
-	// n, err := p.buffer.Write(data)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// // Update the length
-	// header.Length = uint(n)
-
 	return nil
 }
-
-// func (p *Pack) addFile(fpath string, data []byte) error {
-// 	// Create a header
-// 	header := &header{kindFile, fpath, uint(p.buffer.Len()), 0}
-// 	p.headers = append(p.headers, header)
-
-// 	// Write the data
-// 	n, err := p.buffer.Write(data)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	// Update the length
-// 	header.Length = uint(n)
-
-// 	return nil
-// }
 
 func (p *Pack) Pack() ([]byte, error) {
 	out := new(bytes.Buffer)
@@ -181,36 +132,7 @@ func Unpack(data []byte) (*Pack, error) {
 		}
 		pack.records = append(pack.records, &record)
 	}
-	// for dec.More() {
-	// 	var record record
-	// 	if err := dec.Decode(&record); err != nil {
-	// 		return nil, err
-	// 	}
-	// 	pack.records = append(pack.records, &record)
-	// }
-
-	// defer dec.Close()
-	// out := new(bytes.Buffer)
-	// if _, err := io.Copy(out, dec); err != nil {
-	// 	return nil, err
-	// }
-
-	// line, err := out.ReadBytes('\n')
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// // Decode the first set of headers up to the first newline
-	// var headers []*header
-	// if err := json.Unmarshal(line, &headers); err != nil {
-	// 	return nil, err
-	// }
 	return pack, nil
-	// return &Pack{
-	// 	records: pack.records,
-	// 	headers: headers,
-	// 	buffer:  bytes.NewBufferString(out.String()),
-	// }, nil
 }
 
 func (p *Pack) findRecordByHash(hash string) (*record, error) {

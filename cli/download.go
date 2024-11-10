@@ -28,7 +28,7 @@ func (d *Download) command(cli cli.Command) cli.Command {
 
 func (c *CLI) Download(ctx context.Context, in *Download) error {
 	// Load the repository to download from
-	repo, err := c.loadRepo(in.From)
+	repo, err := c.loadRepo(ctx, in.From)
 	if err != nil {
 		return err
 	}

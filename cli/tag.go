@@ -25,7 +25,7 @@ func (t *Tag) command(cli cli.Command) cli.Command {
 
 func (c *CLI) Tag(ctx context.Context, in *Tag) error {
 	// Load the repository
-	repo, err := c.loadRepo(in.Repo)
+	repo, err := c.loadRepo(ctx, in.Repo)
 	if err != nil {
 		return err
 	}
