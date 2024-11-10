@@ -20,7 +20,7 @@ func (c *CatPack) command(cli cli.Command) cli.Command {
 }
 
 func (c *CLI) CatPack(ctx context.Context, in *CatPack) error {
-	repo, err := c.loadRepo(ctx, in.Repo)
+	repo, err := c.loadRepo(in.Repo)
 	if err != nil {
 		return err
 	}

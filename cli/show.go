@@ -25,7 +25,7 @@ func (s *Show) command(cli cli.Command) cli.Command {
 }
 
 func (c *CLI) Show(ctx context.Context, in *Show) error {
-	repo, err := c.loadRepo(ctx, in.Repo)
+	repo, err := c.loadRepo(in.Repo)
 	if err != nil {
 		return err
 	}

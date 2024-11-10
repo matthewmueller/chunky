@@ -20,7 +20,7 @@ func (c *CatCommit) command(cli cli.Command) cli.Command {
 }
 
 func (c *CLI) CatCommit(ctx context.Context, in *CatCommit) error {
-	repo, err := c.loadRepo(ctx, in.Repo)
+	repo, err := c.loadRepo(in.Repo)
 	if err != nil {
 		return err
 	}

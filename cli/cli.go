@@ -59,24 +59,20 @@ type CLI struct {
 	Color  color.Writer
 }
 
-func (c *CLI) loadRepo(ctx context.Context, path string) (repos.Repo, error) {
+func (c *CLI) loadRepo(path string) (repos.Repo, error) {
 	url, err := repos.Parse(path)
 	if err != nil {
 		return nil, fmt.Errorf("cli: parsing repo path: %w", err)
 	}
-	return c.loadRepoFromUrl(ctx, url)
+	return c.loadRepoFromUrl(url)
 }
 
-func (c *CLI) loadRepoFromUrl(ctx context.Context, url *url.URL) (repos.Repo, error) {
+func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 	switch url.Scheme {
 	case "file":
 		return local.New(url.Path), nil
 	case "sftp", "ssh":
-		signer, err := sftp.Parse(ctx, url, c.Prompt.Password)
-		if err != nil {
-			return nil, err
-		}
-		return sftp.Dial(url, signer)
+		return sftp.Load(url)
 	default:
 		return nil, fmt.Errorf("cli: unsupported repo scheme: %s", url.Scheme)
 	}

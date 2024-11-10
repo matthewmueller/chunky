@@ -103,22 +103,30 @@ func Dial(url *url.URL, signer ssh.Signer) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Get the directory
 	dir := strings.TrimPrefix(url.Path, "/")
-	return &Client{sshc, sftp, dir}, nil
+
+	// Create the closer
+	closer := func() error {
+		err = errors.Join(err, sftp.Close())
+		err = errors.Join(err, sshc.Close())
+		return err
+	}
+
+	return &Client{sftp, dir, closer}, nil
 }
 
 type Client struct {
-	sshc *ssh.Client
-	sftp *sftp.Client
-	dir  string
+	sftp   *sftp.Client
+	dir    string
+	closer func() error
 }
 
 var _ repos.Repo = (*Client)(nil)
 
 func (c *Client) Close() (err error) {
-	err = errors.Join(err, c.sftp.Close())
-	err = errors.Join(err, c.sshc.Close())
-	return err
+	return c.closer()
 }
 
 func (c *Client) Upload(ctx context.Context, from fs.FS) error {
@@ -263,17 +271,3 @@ func (c *Client) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error 
 	}
 	return nil
 }
-
-// func (c *Client) Session() (*Session, error) {
-// 	session, err := c.sshc.NewSession()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return (*Session)(session), nil
-// }
-
-// type Session ssh.Session
-
-// func (s *Session) Close() error {
-// 	return (*ssh.Session)(s).Close()
-// }

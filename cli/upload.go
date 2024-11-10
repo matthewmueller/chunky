@@ -51,7 +51,7 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	repo, err := c.loadRepoFromUrl(ctx, repoUrl)
+	repo, err := c.loadRepoFromUrl(repoUrl)
 	if err != nil {
 		return err
 	}

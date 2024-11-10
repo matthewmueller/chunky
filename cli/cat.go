@@ -23,7 +23,7 @@ func (c *Cat) command(cli cli.Command) cli.Command {
 }
 
 func (c *CLI) Cat(ctx context.Context, in *Cat) error {
-	repo, err := c.loadRepo(ctx, in.Repo)
+	repo, err := c.loadRepo(in.Repo)
 	if err != nil {
 		return err
 	}
