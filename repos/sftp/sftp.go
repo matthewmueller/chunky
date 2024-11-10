@@ -146,19 +146,7 @@ func (c *Client) Upload(ctx context.Context, from fs.FS) error {
 
 		// Handle creating directories
 		if de.IsDir() {
-			if err := c.sftp.MkdirAll(remotePath); err != nil {
-				return fmt.Errorf("sftp: unable to create directory %q: %w", path, err)
-			}
-			// Handle the case where the permissions are 0
-			mode := info.Mode()
-			if mode.Perm() == 0 {
-				mode = fs.FileMode(fs.ModeDir | 0755)
-			}
-			// Set the permissions
-			if err := c.sftp.Chmod(remotePath, mode); err != nil {
-				return fmt.Errorf("sftp: unable to chmod directory %q: %w", path, err)
-			}
-			return nil
+			return c.MkdirAll(remotePath, info.Mode())
 		}
 
 		// Handle file uploads concurrently
@@ -177,38 +165,14 @@ func (c *Client) Upload(ctx context.Context, from fs.FS) error {
 }
 
 func (c *Client) uploadFile(from fs.FS, localPath, remotePath string, mode fs.FileMode) error {
-	// Open the local file
-	localFile, err := from.Open(localPath)
+	// Read data from the local file
+	data, err := fs.ReadFile(from, localPath)
 	if err != nil {
-		return fmt.Errorf("sftp: unable to open local file %q: %w", localPath, err)
-	}
-	defer localFile.Close()
-
-	// Open the remote file
-	remoteFile, err := c.sftp.OpenFile(remotePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
-	if err != nil {
-		return fmt.Errorf("sftp: unable to open remote file %q: %w", remotePath, err)
-	}
-	defer remoteFile.Close()
-
-	// Handle the case where the permissions are 0
-	if mode.Perm() == 0 {
-		mode = fs.FileMode(mode.Type() | 0644)
+		return fmt.Errorf("sftp: unable to read local file %q: %w", localPath, err)
 	}
 
-	// Set the permissions
-	if err := remoteFile.Chmod(mode); err != nil {
-		return fmt.Errorf("sftp: unable to chmod remote file %q: %w", remotePath, err)
-	}
-
-	// Copy the file
-	_, err = io.Copy(remoteFile, localFile)
-	if err != nil {
-		return fmt.Errorf("sftp: unable to copy file %q: %w", localPath, err)
-	}
-
-	return nil
-
+	// Write to the remote file
+	return c.WriteFile(remotePath, data, mode)
 }
 
 func (c *Client) Download(ctx context.Context, to virt.FS, paths ...string) error {

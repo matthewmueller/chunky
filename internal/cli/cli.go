@@ -83,7 +83,18 @@ func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 }
 
 func (c *CLI) loadFS(path string) (virt.FS, error) {
-	return virt.OS(filepath.Join(c.Dir, path)), nil
+	url, err := repos.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("cli: parsing repo path: %w", err)
+	}
+	switch url.Scheme {
+	case "file":
+		return virt.OS(filepath.Join(c.Dir, url.Path)), nil
+	case "sftp", "ssh":
+		return sftp.Load(url)
+	default:
+		return nil, fmt.Errorf("cli: unsupported repo scheme: %s", url.Scheme)
+	}
 }
 
 func urlToCachePath(url *url.URL) string {
