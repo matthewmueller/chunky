@@ -1,3 +1,8 @@
+# 0.0.6 / 2024-11-10
+
+- use external prompter
+- remove cached files that have a different gob format
+
 # 0.0.5 / 2024-11-04
 
 - .gitignore -> .chunkyignore
