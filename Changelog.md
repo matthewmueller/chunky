@@ -1,3 +1,11 @@
+# 0.0.8 / 2024-11-10
+
+- support ssh remotes that don't include port
+- support downloading from one remote location to another
+- expose a public api
+- create chunky client with upload and download.
+- make the cache more generic
+
 # 0.0.7 / 2024-11-10
 
 - support using the underlying ssh cli for sftp
