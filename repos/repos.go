@@ -14,7 +14,7 @@ import (
 // Parse parses a repository path and returns a URL.
 func Parse(repoPath string) (*url.URL, error) {
 	// Handle SSH-like paths
-	if !strings.Contains(repoPath, "://") && strings.Contains(repoPath, "@") && strings.Contains(repoPath, ":") {
+	if !strings.Contains(repoPath, "://") && strings.Contains(repoPath, "@") {
 		repoPath = "ssh://" + repoPath
 	}
 
@@ -31,13 +31,9 @@ func Parse(repoPath string) (*url.URL, error) {
 	}
 
 	// Fallback to local file paths
-	repoPath, err := filepath.Abs(repoPath)
-	if err != nil {
-		return nil, err
-	}
 	return &url.URL{
 		Scheme: "file",
-		Path:   repoPath,
+		Path:   filepath.Clean(repoPath),
 	}, nil
 }
 

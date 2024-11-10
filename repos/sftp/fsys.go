@@ -10,11 +10,16 @@ import (
 	"github.com/matthewmueller/virt"
 )
 
-var _ virt.FS = (*Client)(nil)
 var _ fs.ReadDirFS = (*Client)(nil)
+var _ fs.StatFS = (*Client)(nil)
+var _ virt.FS = (*Client)(nil)
 
 func (c *Client) Open(name string) (fs.File, error) {
 	return c.sftp.Open(path.Join(c.dir, name))
+}
+
+func (c *Client) Stat(name string) (fs.FileInfo, error) {
+	return c.sftp.Stat(path.Join(c.dir, name))
 }
 
 func (c *Client) ReadDir(name string) ([]fs.DirEntry, error) {
@@ -30,11 +35,13 @@ func (c *Client) ReadDir(name string) ([]fs.DirEntry, error) {
 }
 
 func (c *Client) MkdirAll(name string, perm fs.FileMode) error {
-	fpath := path.Join(c.dir, name)
+	return c.mkdirAll(path.Join(c.dir, name), perm)
+}
 
+func (c *Client) mkdirAll(fpath string, perm fs.FileMode) error {
 	// Create the directory
 	if err := c.sftp.MkdirAll(fpath); err != nil {
-		return fmt.Errorf("sftp: unable to create directory %q: %w", name, err)
+		return fmt.Errorf("sftp: unable to create directory %q: %w", fpath, err)
 	}
 
 	// Handle the case where the permissions are 0
@@ -44,17 +51,19 @@ func (c *Client) MkdirAll(name string, perm fs.FileMode) error {
 
 	// Set the permissions
 	if err := c.sftp.Chmod(fpath, perm); err != nil {
-		return fmt.Errorf("sftp: unable to chmod directory %q: %w", name, err)
+		return fmt.Errorf("sftp: unable to chmod directory %q: %w", fpath, err)
 	}
 
 	return nil
 }
 
 func (c *Client) WriteFile(name string, data []byte, mode fs.FileMode) error {
-	fpath := path.Join(c.dir, name)
+	return c.writeFile(path.Join(c.dir, name), data, mode)
+}
 
+func (c *Client) writeFile(name string, data []byte, mode fs.FileMode) error {
 	// Open the remote file
-	remoteFile, err := c.sftp.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	remoteFile, err := c.sftp.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		return fmt.Errorf("sftp: unable to open remote file %q: %w", name, err)
 	}

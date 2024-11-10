@@ -22,6 +22,7 @@ import (
 	"github.com/matthewmueller/chunky/repos/sftp"
 	"github.com/matthewmueller/logs"
 	"github.com/matthewmueller/prompter"
+	"github.com/matthewmueller/text"
 	"github.com/matthewmueller/virt"
 )
 
@@ -97,30 +98,8 @@ func (c *CLI) loadFS(path string) (virt.FS, error) {
 	}
 }
 
-func urlToCachePath(url *url.URL) string {
-	str := new(strings.Builder)
-	if url.Scheme != "" {
-		str.WriteString(url.Scheme)
-	}
-	if url.User != nil {
-		str.WriteString("_")
-		str.WriteString(url.User.Username())
-	}
-	if url.Host != "" {
-		str.WriteString("_")
-		host := strings.ReplaceAll(url.Host, ".", "-")
-		host = strings.ReplaceAll(host, ":", "-")
-		str.WriteString(host)
-	}
-	if url.Path != "" {
-		str.WriteString("_")
-		str.WriteString(strings.ReplaceAll(url.Path, "/", "-"))
-	}
-	return str.String()
-}
-
 func (c *CLI) cacheDir(repoUrl *url.URL) (string, error) {
-	cachePath := urlToCachePath(repoUrl)
+	cachePath := text.Slug(repoUrl.String())
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", fmt.Errorf("cli: getting user cache dir: %w", err)
@@ -133,6 +112,9 @@ func (c *CLI) loadCache(ctx context.Context, repo repos.Repo, repoUrl *url.URL) 
 	cacheDir, err := c.cacheDir(repoUrl)
 	if err != nil {
 		return nil, fmt.Errorf("cli: getting user cache dir: %w", err)
+	}
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return nil, fmt.Errorf("cli: unable to create cache dir: %w", err)
 	}
 	return caches.Download(ctx, repo, virt.OS(cacheDir))
 }

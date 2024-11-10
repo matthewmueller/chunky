@@ -9,6 +9,7 @@ require (
 	github.com/matryer/is v1.4.1
 	github.com/matthewmueller/logs v0.0.2
 	github.com/matthewmueller/prompter v0.0.2
+	github.com/matthewmueller/text v0.0.0-20210424201111-ec1e4af8dfe8
 	github.com/matthewmueller/virt v0.0.4
 	github.com/pkg/sftp v1.13.7
 	github.com/restic/chunker v0.4.0
@@ -21,6 +22,7 @@ require (
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
+	github.com/gedex/inflector v0.0.0-20170307190818-16278e9db813 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/kr/fs v0.1.0 // indirect

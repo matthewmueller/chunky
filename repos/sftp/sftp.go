@@ -146,7 +146,7 @@ func (c *Client) Upload(ctx context.Context, from fs.FS) error {
 
 		// Handle creating directories
 		if de.IsDir() {
-			return c.MkdirAll(remotePath, info.Mode())
+			return c.mkdirAll(remotePath, info.Mode())
 		}
 
 		// Handle file uploads concurrently
@@ -172,7 +172,7 @@ func (c *Client) uploadFile(from fs.FS, localPath, remotePath string, mode fs.Fi
 	}
 
 	// Write to the remote file
-	return c.WriteFile(remotePath, data, mode)
+	return c.writeFile(remotePath, data, mode)
 }
 
 func (c *Client) Download(ctx context.Context, to virt.FS, paths ...string) error {
