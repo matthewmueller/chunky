@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -14,59 +12,19 @@ import (
 	"github.com/matthewmueller/virt"
 )
 
-func pathFromUrl(url *url.URL) string {
-	str := new(strings.Builder)
-	if url.Scheme != "" {
-		str.WriteString(url.Scheme)
-	}
-	if url.User != nil {
-		str.WriteString("_")
-		str.WriteString(url.User.Username())
-	}
-	if url.Host != "" {
-		str.WriteString("_")
-		host := strings.ReplaceAll(url.Host, ".", "-")
-		host = strings.ReplaceAll(host, ":", "-")
-		str.WriteString(host)
-	}
-	if url.Path != "" {
-		str.WriteString("_")
-		str.WriteString(strings.ReplaceAll(url.Path, "/", "-"))
-	}
-	return str.String()
-}
-
-// Local cache directory
-func Directory(url *url.URL) (string, error) {
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(cacheDir, "chunky", pathFromUrl(url)), nil
-}
-
 // Download the cache to the local filesystem
-func Download(ctx context.Context, repo repos.Repo, url *url.URL) (*Local, error) {
-	cache, err := Load(url)
+func Download(ctx context.Context, from repos.Repo, to virt.FS) (*Local, error) {
+	cache, err := Load(to)
 	if err != nil {
 		return nil, err
 	}
-	if err := cache.Download(ctx, repo); err != nil {
+	if err := cache.Download(ctx, from); err != nil {
 		return nil, err
 	}
 	return cache, nil
 }
 
-func Load(url *url.URL) (*Local, error) {
-	dir, err := Directory(url)
-	if err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, err
-	}
-
-	fsys := virt.OS(dir)
+func Load(fsys virt.FS) (*Local, error) {
 	cache := &Local{
 		fsys,
 		map[string]*commits.File{},

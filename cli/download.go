@@ -2,12 +2,9 @@ package cli
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/livebud/cli"
-	"github.com/matthewmueller/chunky/internal/commits"
-	"github.com/matthewmueller/chunky/internal/packs"
-	"github.com/matthewmueller/virt"
+	"github.com/matthewmueller/chunky"
 )
 
 type Download struct {
@@ -39,36 +36,11 @@ func (c *CLI) Download(ctx context.Context, in *Download) error {
 		return err
 	}
 
-	// Load the commit
-	commit, err := commits.Read(ctx, repo, in.Revision)
-	if err != nil {
-		return fmt.Errorf("cli: unable to load commit %q: %w", in.Revision, err)
-	}
-
-	// Download into a virtual tree
-	tree := virt.Tree{}
-	for _, commitPack := range commit.Packs() {
-		pack, err := packs.Read(ctx, repo, commitPack.ID)
-		if err != nil {
-			return fmt.Errorf("cli: unable to download pack %q: %w", commitPack.ID, err)
-		}
-		for _, file := range commitPack.Files {
-			packFile, err := pack.Read(file.Path)
-			if err != nil {
-				return fmt.Errorf("cli: unable to read file %q: %w", file.Path, err)
-			}
-			tree[file.Path] = &virt.File{
-				Path:    file.Path,
-				Data:    packFile.Data,
-				Mode:    packFile.Mode,
-				ModTime: packFile.ModTime,
-			}
-		}
-	}
-
-	// Write the virtual tree to the filesystem
-	if in.Sync {
-		return virt.SyncFS(tree, to)
-	}
-	return virt.WriteFS(tree, to)
+	// Download the directory
+	return c.Chunky.Download(ctx, &chunky.Download{
+		From:     repo,
+		To:       to,
+		Revision: in.Revision,
+		Sync:     in.Sync,
+	})
 }

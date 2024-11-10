@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/livebud/cli"
-	"github.com/matthewmueller/chunky/internal/caches"
 	"github.com/matthewmueller/chunky/internal/repos"
 )
 
@@ -25,7 +24,7 @@ func (c *CLI) Clean(ctx context.Context, in *Clean) error {
 		return err
 	}
 
-	cacheDir, err := caches.Directory(repoUrl)
+	cacheDir, err := c.cacheDir(repoUrl)
 	if err != nil {
 		return err
 	}

@@ -13,6 +13,8 @@ import (
 
 	"github.com/livebud/cli"
 	"github.com/livebud/color"
+	"github.com/matthewmueller/chunky"
+	"github.com/matthewmueller/chunky/internal/caches"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/humanize"
 	"github.com/matthewmueller/chunky/internal/repos"
@@ -27,6 +29,7 @@ func Run() int {
 	log := logs.Default()
 	cli := &CLI{
 		log,
+		chunky.New(log),
 		os.Stdout,
 		".",
 		prompter.Default(),
@@ -53,6 +56,7 @@ func Default() *CLI {
 
 type CLI struct {
 	Log    *slog.Logger
+	Chunky *chunky.Client
 	Stdout io.Writer
 	Dir    string
 	Prompt *prompter.Prompt
@@ -80,6 +84,46 @@ func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 
 func (c *CLI) loadFS(path string) (virt.FS, error) {
 	return virt.OS(filepath.Join(c.Dir, path)), nil
+}
+
+func urlToCachePath(url *url.URL) string {
+	str := new(strings.Builder)
+	if url.Scheme != "" {
+		str.WriteString(url.Scheme)
+	}
+	if url.User != nil {
+		str.WriteString("_")
+		str.WriteString(url.User.Username())
+	}
+	if url.Host != "" {
+		str.WriteString("_")
+		host := strings.ReplaceAll(url.Host, ".", "-")
+		host = strings.ReplaceAll(host, ":", "-")
+		str.WriteString(host)
+	}
+	if url.Path != "" {
+		str.WriteString("_")
+		str.WriteString(strings.ReplaceAll(url.Path, "/", "-"))
+	}
+	return str.String()
+}
+
+func (c *CLI) cacheDir(repoUrl *url.URL) (string, error) {
+	cachePath := urlToCachePath(repoUrl)
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("cli: getting user cache dir: %w", err)
+	}
+	dir := filepath.Join(cacheDir, "chunky", cachePath)
+	return dir, nil
+}
+
+func (c *CLI) loadCache(ctx context.Context, repo repos.Repo, repoUrl *url.URL) (caches.Cache, error) {
+	cacheDir, err := c.cacheDir(repoUrl)
+	if err != nil {
+		return nil, fmt.Errorf("cli: getting user cache dir: %w", err)
+	}
+	return caches.Download(ctx, repo, virt.OS(cacheDir))
 }
 
 func (c *CLI) getUser() (string, error) {
