@@ -1,3 +1,7 @@
+# 0.0.7 / 2024-11-10
+
+- support using the underlying ssh cli for sftp
+
 # 0.0.6 / 2024-11-10
 
 - use external prompter
