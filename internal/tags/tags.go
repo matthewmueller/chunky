@@ -6,7 +6,7 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/matthewmueller/chunky/internal/repos"
+	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/virt"
 )
 

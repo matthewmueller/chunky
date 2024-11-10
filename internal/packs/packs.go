@@ -14,8 +14,8 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/matthewmueller/chunky/internal/chunker"
-	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/chunky/internal/sha256"
+	"github.com/matthewmueller/chunky/repos"
 )
 
 func New() *Pack {

@@ -9,12 +9,12 @@ import (
 	"path"
 	"time"
 
-	"github.com/matthewmueller/chunky/internal/caches"
+	"github.com/matthewmueller/chunky/caches"
 	"github.com/matthewmueller/chunky/internal/chunkyignore"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/packs"
-	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/chunky/internal/sha256"
+	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/virt"
 )
 

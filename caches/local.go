@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/matthewmueller/chunky/internal/commits"
-	"github.com/matthewmueller/chunky/internal/repos"
+	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/virt"
 )
 

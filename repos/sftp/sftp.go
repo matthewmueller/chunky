@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/matthewmueller/chunky/internal/repos"
+	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/virt"
 	"github.com/pkg/sftp"
 	"github.com/zalando/go-keyring"

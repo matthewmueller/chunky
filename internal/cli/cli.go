@@ -14,12 +14,12 @@ import (
 	"github.com/livebud/cli"
 	"github.com/livebud/color"
 	"github.com/matthewmueller/chunky"
-	"github.com/matthewmueller/chunky/internal/caches"
+	"github.com/matthewmueller/chunky/caches"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/humanize"
-	"github.com/matthewmueller/chunky/internal/repos"
-	"github.com/matthewmueller/chunky/internal/repos/local"
-	"github.com/matthewmueller/chunky/internal/repos/sftp"
+	"github.com/matthewmueller/chunky/repos"
+	"github.com/matthewmueller/chunky/repos/local"
+	"github.com/matthewmueller/chunky/repos/sftp"
 	"github.com/matthewmueller/logs"
 	"github.com/matthewmueller/prompter"
 	"github.com/matthewmueller/virt"
@@ -74,7 +74,7 @@ func (c *CLI) loadRepo(path string) (repos.Repo, error) {
 func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 	switch url.Scheme {
 	case "file":
-		return local.New(url.Path), nil
+		return local.New(virt.OS(url.Path)), nil
 	case "sftp", "ssh":
 		return sftp.Load(url)
 	default:

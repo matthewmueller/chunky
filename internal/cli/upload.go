@@ -5,8 +5,8 @@ import (
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky"
-	"github.com/matthewmueller/chunky/internal/caches"
-	"github.com/matthewmueller/chunky/internal/repos"
+	"github.com/matthewmueller/chunky/caches"
+	"github.com/matthewmueller/chunky/repos"
 )
 
 type Upload struct {

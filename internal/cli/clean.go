@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/livebud/cli"
-	"github.com/matthewmueller/chunky/internal/repos"
+	"github.com/matthewmueller/chunky/repos"
 )
 
 type Clean struct {

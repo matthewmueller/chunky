@@ -17,8 +17,8 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/matthewmueller/chunky/internal/packs"
-	"github.com/matthewmueller/chunky/internal/repos"
 	"github.com/matthewmueller/chunky/internal/timeid"
+	"github.com/matthewmueller/chunky/repos"
 )
 
 func New(user string, createdAt time.Time) *Commit {
