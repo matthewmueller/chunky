@@ -120,6 +120,10 @@ func Dial(url *url.URL, signer ssh.Signer) (*Client, error) {
 	return &Client{key, sftp, dir, closer}, nil
 }
 
+func New(key string, sftp *sftp.Client) *Client {
+	return &Client{key, sftp, ".", func() error { return nil }}
+}
+
 type Client struct {
 	key    string
 	sftp   *sftp.Client
