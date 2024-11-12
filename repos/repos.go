@@ -37,10 +37,17 @@ func Parse(repoPath string) (*url.URL, error) {
 	}, nil
 }
 
+// Repo is a repository interface for uploading and downloading files
 type Repo interface {
+	// Unique key that identifies the repository (used as a cache key)
+	Key() string
+	// Upload from a filesystem to the repository
 	Upload(ctx context.Context, from fs.FS) error
+	// Download paths from the repository to a filesystem
 	Download(ctx context.Context, to virt.FS, paths ...string) error
+	// Walk the repository
 	Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error
+	// Close the repository
 	Close() error
 }
 

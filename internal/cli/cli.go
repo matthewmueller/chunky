@@ -75,7 +75,7 @@ func (c *CLI) loadRepo(path string) (repos.Repo, error) {
 func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 	switch url.Scheme {
 	case "file":
-		return local.New(virt.OS(url.Path)), nil
+		return local.New(url.Path, virt.OS(url.Path)), nil
 	case "sftp", "ssh":
 		return sftp.Load(url)
 	default:
@@ -108,8 +108,8 @@ func (c *CLI) cacheDir(repoUrl *url.URL) (string, error) {
 	return dir, nil
 }
 
-func (c *CLI) loadCache(ctx context.Context, repo repos.Repo, repoUrl *url.URL) (caches.Cache, error) {
-	cacheDir, err := c.cacheDir(repoUrl)
+func (c *CLI) loadCache(ctx context.Context, repo repos.Repo) (caches.Cache, error) {
+	cacheDir, err := caches.Directory(repo)
 	if err != nil {
 		return nil, fmt.Errorf("cli: getting user cache dir: %w", err)
 	}

@@ -104,6 +104,9 @@ func Dial(url *url.URL, signer ssh.Signer) (*Client, error) {
 		return nil, err
 	}
 
+	// Generate a unique key for this repo
+	key := url.User.Username() + "@" + url.Host + "/" + url.Path
+
 	// Get the directory
 	dir := strings.TrimPrefix(url.Path, "/")
 
@@ -114,16 +117,21 @@ func Dial(url *url.URL, signer ssh.Signer) (*Client, error) {
 		return err
 	}
 
-	return &Client{sftp, dir, closer}, nil
+	return &Client{key, sftp, dir, closer}, nil
 }
 
 type Client struct {
+	key    string
 	sftp   *sftp.Client
 	dir    string
 	closer func() error
 }
 
 var _ repos.Repo = (*Client)(nil)
+
+func (c *Client) Key() string {
+	return c.key
+}
 
 func (c *Client) Close() (err error) {
 	return c.closer()

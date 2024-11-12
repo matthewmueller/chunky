@@ -38,7 +38,7 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 
 	var cache caches.Cache = caches.None
 	if in.Cache {
-		cache, err = c.loadCache(ctx, repo, repoUrl)
+		cache, err = c.loadCache(ctx, repo)
 		if err != nil {
 			return err
 		}

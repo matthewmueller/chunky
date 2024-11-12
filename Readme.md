@@ -4,7 +4,6 @@ Efficiently store versioned data.
 
 ![CleanShot 2024-11-04 at 22 49 26@2x](https://github.com/user-attachments/assets/eb0c85c0-4c15-4032-b656-bcc48eaa01d2)
 
-
 Chunky was built to ship code and binaries to remote servers. Then once on those remote servers, Chunky helps you quickly swap versions.
 
 Chunky uses content-defined-chunking (CDC) using Restic's [chunker library](https://github.com/restic/chunker) to efficiently store data on disk. When you upload new versions, only the files that have changed will be uploaded. Preliminary estimates suggest that repos are about half the size of the original codebase, while storing every version!
@@ -138,9 +137,15 @@ I'd encourage you to contribute new repository backends to Chunky. The interface
 
 ```go
 type Repo interface {
+	// Unique key that identifies the repository (used as a cache key)
+	Key() string
+	// Upload from a filesystem to the repository
 	Upload(ctx context.Context, from fs.FS) error
+	// Download paths from the repository to a filesystem
 	Download(ctx context.Context, to virt.FS, paths ...string) error
+	// Walk the repository
 	Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error
+	// Close the repository
 	Close() error
 }
 ```

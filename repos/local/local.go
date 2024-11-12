@@ -8,15 +8,20 @@ import (
 	"github.com/matthewmueller/virt"
 )
 
-func New(fsys virt.FS) *Repo {
-	return &Repo{fsys}
+func New(key string, fsys virt.FS) *Repo {
+	return &Repo{key, fsys}
 }
 
 type Repo struct {
+	key  string
 	fsys virt.FS
 }
 
 var _ repos.Repo = (*Repo)(nil)
+
+func (r *Repo) Key() string {
+	return r.key
+}
 
 func (r *Repo) Upload(ctx context.Context, from fs.FS) error {
 	return virt.WriteFS(from, r.fsys)

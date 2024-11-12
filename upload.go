@@ -26,7 +26,7 @@ type Upload struct {
 	Tags  []string
 }
 
-func (u *Upload) validate() (err error) {
+func (u *Upload) validate(ctx context.Context) (err error) {
 	// Required fields
 	if u.From == nil {
 		err = errors.Join(err, errors.New("missing from filesystem"))
@@ -46,7 +46,15 @@ func (u *Upload) validate() (err error) {
 
 	// Default the cache to None
 	if u.Cache == nil {
-		u.Cache = caches.None
+		cacheDir, err := caches.Directory(u.To)
+		if err != nil {
+			return errors.Join(err, fmt.Errorf("getting user cache dir: %w", err))
+		}
+		cache, err := caches.Download(ctx, u.To, virt.OS(cacheDir))
+		if err != nil {
+			return errors.Join(err, fmt.Errorf("unable to download cache: %w", err))
+		}
+		u.Cache = cache
 	}
 
 	// Validate the tags
@@ -65,7 +73,7 @@ func (u *Upload) validate() (err error) {
 
 // Upload a directory to a repository
 func (c *Client) Upload(ctx context.Context, in *Upload) error {
-	if err := in.validate(); err != nil {
+	if err := in.validate(ctx); err != nil {
 		return err
 	}
 
