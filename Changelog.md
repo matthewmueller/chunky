@@ -1,3 +1,9 @@
+# 0.0.9 / 2024-11-13
+
+- improve programmatic interfaces
+- go back to native ssh since that's faster
+- internalize cache
+
 # 0.0.8 / 2024-11-10
 
 - support ssh remotes that don't include port
