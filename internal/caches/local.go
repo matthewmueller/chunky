@@ -4,24 +4,13 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/text"
 	"github.com/matthewmueller/virt"
 )
-
-// Directory returns the cache directory for a repo
-func Directory(repo repos.Repo) (string, error) {
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(cacheDir, "chunky", text.Slug(repo.Key())), nil
-}
 
 // Download the cache to the local filesystem
 func Download(ctx context.Context, from repos.Repo, to virt.FS) (*Local, error) {

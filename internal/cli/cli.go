@@ -14,7 +14,6 @@ import (
 	"github.com/livebud/cli"
 	"github.com/livebud/color"
 	"github.com/matthewmueller/chunky"
-	"github.com/matthewmueller/chunky/caches"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/humanize"
 	"github.com/matthewmueller/chunky/repos"
@@ -75,9 +74,9 @@ func (c *CLI) loadRepo(path string) (repos.Repo, error) {
 func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 	switch url.Scheme {
 	case "file":
-		return local.New(url.Path, virt.OS(url.Path)), nil
+		return local.New(virt.OS(url.Path)), nil
 	case "sftp", "ssh":
-		return sftp.Load(url)
+		return sftp.Dial(url)
 	default:
 		return nil, fmt.Errorf("cli: unsupported repo scheme: %s", url.Scheme)
 	}
@@ -92,31 +91,30 @@ func (c *CLI) loadFS(path string) (virt.FS, error) {
 	case "file":
 		return virt.OS(filepath.Join(c.Dir, url.Path)), nil
 	case "sftp", "ssh":
-		return sftp.Load(url)
+		return sftp.Dial(url)
 	default:
 		return nil, fmt.Errorf("cli: unsupported repo scheme: %s", url.Scheme)
 	}
 }
 
 func (c *CLI) cacheDir(repoUrl *url.URL) (string, error) {
-	cachePath := text.Slug(repoUrl.String())
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", fmt.Errorf("cli: getting user cache dir: %w", err)
 	}
-	dir := filepath.Join(cacheDir, "chunky", cachePath)
+	dir := filepath.Join(cacheDir, "chunky", text.Slug(repoUrl.String()))
 	return dir, nil
 }
 
-func (c *CLI) loadCache(ctx context.Context, repo repos.Repo) (caches.Cache, error) {
-	cacheDir, err := caches.Directory(repo)
+func (c *CLI) loadCache(repoUrl *url.URL) (virt.FS, error) {
+	cacheDir, err := c.cacheDir(repoUrl)
 	if err != nil {
-		return nil, fmt.Errorf("cli: getting user cache dir: %w", err)
+		return nil, err
 	}
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return nil, fmt.Errorf("cli: unable to create cache dir: %w", err)
+		return nil, fmt.Errorf("cli: creating cache dir: %w", err)
 	}
-	return caches.Download(ctx, repo, virt.OS(cacheDir))
+	return virt.OS(cacheDir), nil
 }
 
 func (c *CLI) getUser() (string, error) {

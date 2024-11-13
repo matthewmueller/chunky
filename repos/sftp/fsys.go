@@ -8,22 +8,22 @@ import (
 	"path"
 
 	"github.com/matthewmueller/virt"
+	"github.com/pkg/sftp"
 )
 
-var _ fs.ReadDirFS = (*Client)(nil)
-var _ fs.StatFS = (*Client)(nil)
-var _ virt.FS = (*Client)(nil)
+var _ fs.ReadDirFS = (*Repo)(nil)
+var _ fs.StatFS = (*Repo)(nil)
+var _ virt.FS = (*Repo)(nil)
 
-func (c *Client) Open(name string) (fs.File, error) {
-	return c.sftp.Open(path.Join(c.dir, name))
+func (r *Repo) Open(name string) (fs.File, error) {
+	return r.sftp.Open(path.Join(r.dir, name))
+}
+func (r *Repo) Stat(name string) (fs.FileInfo, error) {
+	return r.sftp.Stat(path.Join(r.dir, name))
 }
 
-func (c *Client) Stat(name string) (fs.FileInfo, error) {
-	return c.sftp.Stat(path.Join(c.dir, name))
-}
-
-func (c *Client) ReadDir(name string) ([]fs.DirEntry, error) {
-	fis, err := c.sftp.ReadDir(path.Join(c.dir, name))
+func (r *Repo) ReadDir(name string) ([]fs.DirEntry, error) {
+	fis, err := r.sftp.ReadDir(path.Join(r.dir, name))
 	if err != nil {
 		return nil, fmt.Errorf("sftp: unable to read directory %q: %w", name, err)
 	}
@@ -34,13 +34,13 @@ func (c *Client) ReadDir(name string) ([]fs.DirEntry, error) {
 	return des, nil
 }
 
-func (c *Client) MkdirAll(name string, perm fs.FileMode) error {
-	return c.mkdirAll(path.Join(c.dir, name), perm)
+func (r *Repo) MkdirAll(name string, perm fs.FileMode) error {
+	return mkdirAll(r.sftp, path.Join(r.dir, name), perm)
 }
 
-func (c *Client) mkdirAll(fpath string, perm fs.FileMode) error {
+func mkdirAll(sftp *sftp.Client, fpath string, perm fs.FileMode) error {
 	// Create the directory
-	if err := c.sftp.MkdirAll(fpath); err != nil {
+	if err := sftp.MkdirAll(fpath); err != nil {
 		return fmt.Errorf("sftp: unable to create directory %q: %w", fpath, err)
 	}
 
@@ -50,20 +50,20 @@ func (c *Client) mkdirAll(fpath string, perm fs.FileMode) error {
 	}
 
 	// Set the permissions
-	if err := c.sftp.Chmod(fpath, perm); err != nil {
+	if err := sftp.Chmod(fpath, perm); err != nil {
 		return fmt.Errorf("sftp: unable to chmod directory %q: %w", fpath, err)
 	}
 
 	return nil
 }
 
-func (c *Client) WriteFile(name string, data []byte, mode fs.FileMode) error {
-	return c.writeFile(path.Join(c.dir, name), data, mode)
+func (r *Repo) WriteFile(name string, data []byte, mode fs.FileMode) error {
+	return writeFile(r.sftp, path.Join(r.dir, name), data, mode)
 }
 
-func (c *Client) writeFile(name string, data []byte, mode fs.FileMode) error {
+func writeFile(sftp *sftp.Client, name string, data []byte, mode fs.FileMode) error {
 	// Open the remote file
-	remoteFile, err := c.sftp.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	remoteFile, err := sftp.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		return fmt.Errorf("sftp: unable to open remote file %q: %w", name, err)
 	}
@@ -87,6 +87,6 @@ func (c *Client) writeFile(name string, data []byte, mode fs.FileMode) error {
 	return nil
 }
 
-func (c *Client) RemoveAll(name string) error {
-	return c.sftp.RemoveAll(path.Join(c.dir, name))
+func (r *Repo) RemoveAll(name string) error {
+	return r.sftp.RemoveAll(path.Join(r.dir, name))
 }

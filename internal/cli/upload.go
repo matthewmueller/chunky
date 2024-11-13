@@ -5,7 +5,6 @@ import (
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky"
-	"github.com/matthewmueller/chunky/caches"
 	"github.com/matthewmueller/chunky/repos"
 )
 
@@ -21,7 +20,6 @@ func (u *Upload) command(cli cli.Command) cli.Command {
 	cmd.Arg("from", "directory to upload").String(&u.From)
 	cmd.Arg("repo", "repository to upload to").String(&u.To)
 	cmd.Flag("tags", "tag the revision").Short('t').Optional().Strings(&u.Tags)
-	cmd.Flag("cache", "use a cache").Bool(&u.Cache).Default(true)
 	return cmd
 }
 
@@ -36,12 +34,9 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	var cache caches.Cache = caches.None
-	if in.Cache {
-		cache, err = c.loadCache(ctx, repo)
-		if err != nil {
-			return err
-		}
+	cache, err := c.loadCache(repoUrl)
+	if err != nil {
+		return err
 	}
 
 	fsys, err := c.loadFS(in.From)

@@ -2,101 +2,34 @@ package sftp
 
 import (
 	"context"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/url"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 
 	"github.com/matthewmueller/chunky/repos"
+	"github.com/matthewmueller/sshx"
 	"github.com/matthewmueller/virt"
 	"github.com/pkg/sftp"
-	"github.com/zalando/go-keyring"
-	"golang.org/x/crypto/ssh"
 	"golang.org/x/sync/errgroup"
 )
 
-func Parse(ctx context.Context, url *url.URL, onPassword func(ctx context.Context, prompt string) (string, error)) (ssh.Signer, error) {
-	keyFile := url.Query().Get("key")
-	if keyFile == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		keyFile = filepath.Join(home, ".ssh", "id_rsa")
-	}
+// Dial an SFTP connection and return a new repository.
+func Dial(url *url.URL) (*Repo, error) {
+	user, host := url.User.Username(), url.Host
 
-	keyData, err := os.ReadFile(keyFile)
+	// Dial the SSH client
+	sshClient, err := sshx.Dial(user, host)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sftp: unable to dial %s@%s: %w", user, host, err)
 	}
 
-	// Try loading the key without a passphrase
-	signer, err := ssh.ParsePrivateKey([]byte(keyData))
-	if err != nil {
-		if _, ok := err.(*ssh.PassphraseMissingError); !ok {
-			return nil, err
-		}
-
-		// Try loading from the URL
-		if password, ok := url.User.Password(); ok {
-			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(keyData), []byte(password))
-			if err != nil {
-				return nil, err
-			}
-			return signer, nil
-		}
-
-		// Try fetching from the keyring
-		user, err := user.Current()
-		if err != nil {
-			return nil, err
-		}
-
-		// Try loading from the keyring
-		if password, err := keyring.Get("Chunky CLI", user.Username); err == nil {
-			if signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(keyData), []byte(password)); err == nil {
-				return signer, nil
-			} else if !errors.Is(err, keyring.ErrNotFound) && !errors.Is(err, x509.IncorrectPasswordError) {
-				return nil, err
-			}
-		}
-
-		// Prompt the user
-		password, err := onPassword(ctx, "Enter passphrase for "+keyFile+": ")
-		if err != nil {
-			return nil, err
-		}
-
-		// Test the password one more time
-		if signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(keyData), []byte(password)); err != nil {
-			return nil, err
-		}
-
-		// Upon success, save the password to the keyring for future use
-		if err := keyring.Set("Chunky CLI", user.Username, password); err != nil {
-			return nil, err
-		}
-	}
-
-	return signer, nil
-}
-
-func Dial(url *url.URL, signer ssh.Signer) (*Client, error) {
-	sshc, err := ssh.Dial("tcp", url.Host, &ssh.ClientConfig{
-		User:            url.User.Username(),
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	sftp, err := sftp.NewClient(sshc,
+	// Open a new SFTP session
+	sftpClient, err := sftp.NewClient(sshClient,
 		sftp.UseConcurrentReads(true),
 		sftp.UseConcurrentWrites(true),
 	)
@@ -104,44 +37,37 @@ func Dial(url *url.URL, signer ssh.Signer) (*Client, error) {
 		return nil, err
 	}
 
-	// Generate a unique key for this repo
-	key := url.User.Username() + "@" + url.Host + "/" + url.Path
-
 	// Get the directory
 	dir := strings.TrimPrefix(url.Path, "/")
 
 	// Create the closer
 	closer := func() error {
-		err = errors.Join(err, sftp.Close())
-		err = errors.Join(err, sshc.Close())
+		err = errors.Join(err, sftpClient.Close())
+		err = errors.Join(err, sshClient.Close())
 		return err
 	}
 
-	return &Client{key, sftp, dir, closer}, nil
+	return &Repo{sftpClient, dir, closer}, nil
 }
 
-func New(key string, sftp *sftp.Client) *Client {
-	return &Client{key, sftp, ".", func() error { return nil }}
+// New creates a new SFTP repository.
+func New(sftp *sftp.Client, dir string) *Repo {
+	return &Repo{sftp, dir, func() error { return nil }}
 }
 
-type Client struct {
-	key    string
+type Repo struct {
 	sftp   *sftp.Client
 	dir    string
 	closer func() error
 }
 
-var _ repos.Repo = (*Client)(nil)
+var _ repos.Repo = (*Repo)(nil)
 
-func (c *Client) Key() string {
-	return c.key
-}
-
-func (c *Client) Close() (err error) {
+func (c *Repo) Close() (err error) {
 	return c.closer()
 }
 
-func (c *Client) Upload(ctx context.Context, from fs.FS) error {
+func (c *Repo) Upload(ctx context.Context, from fs.FS) error {
 	eg := new(errgroup.Group)
 	if err := fs.WalkDir(from, ".", func(path string, de fs.DirEntry, err error) error {
 		if err != nil {
@@ -158,7 +84,7 @@ func (c *Client) Upload(ctx context.Context, from fs.FS) error {
 
 		// Handle creating directories
 		if de.IsDir() {
-			return c.mkdirAll(remotePath, info.Mode())
+			return mkdirAll(c.sftp, remotePath, info.Mode())
 		}
 
 		// Handle file uploads concurrently
@@ -176,7 +102,7 @@ func (c *Client) Upload(ctx context.Context, from fs.FS) error {
 	return nil
 }
 
-func (c *Client) uploadFile(from fs.FS, localPath, remotePath string, mode fs.FileMode) error {
+func (c *Repo) uploadFile(from fs.FS, localPath, remotePath string, mode fs.FileMode) error {
 	// Read data from the local file
 	data, err := fs.ReadFile(from, localPath)
 	if err != nil {
@@ -184,10 +110,10 @@ func (c *Client) uploadFile(from fs.FS, localPath, remotePath string, mode fs.Fi
 	}
 
 	// Write to the remote file
-	return c.writeFile(remotePath, data, mode)
+	return writeFile(c.sftp, remotePath, data, mode)
 }
 
-func (c *Client) Download(ctx context.Context, to virt.FS, paths ...string) error {
+func (c *Repo) Download(ctx context.Context, to virt.FS, paths ...string) error {
 	eg := new(errgroup.Group)
 	for _, path := range paths {
 		eg.Go(func() error {
@@ -200,7 +126,7 @@ func (c *Client) Download(ctx context.Context, to virt.FS, paths ...string) erro
 	return nil
 }
 
-func (c *Client) downloadFile(to virt.FS, path string) error {
+func (c *Repo) downloadFile(to virt.FS, path string) error {
 	remotePath := filepath.Join(c.dir, path)
 	remoteFile, err := c.sftp.Open(remotePath)
 	if err != nil {
@@ -226,7 +152,7 @@ func (c *Client) downloadFile(to virt.FS, path string) error {
 	return to.WriteFile(path, data, fileInfo.Mode())
 }
 
-func (c *Client) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error {
+func (c *Repo) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error {
 	walker := c.sftp.Walk(filepath.Join(c.dir, dir))
 	for walker.Step() {
 		if err := walker.Err(); err != nil {

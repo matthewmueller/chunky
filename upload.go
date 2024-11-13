@@ -9,7 +9,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/matthewmueller/chunky/caches"
+	"github.com/matthewmueller/chunky/internal/caches"
 	"github.com/matthewmueller/chunky/internal/chunkyignore"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/packs"
@@ -21,18 +21,21 @@ import (
 type Upload struct {
 	From  fs.FS
 	To    repos.Repo
-	Cache caches.Cache
+	Cache virt.FS
 	User  string
 	Tags  []string
 }
 
-func (u *Upload) validate(ctx context.Context) (err error) {
+func (u *Upload) validate() (err error) {
 	// Required fields
 	if u.From == nil {
 		err = errors.Join(err, errors.New("missing from filesystem"))
 	}
 	if u.To == nil {
 		err = errors.Join(err, errors.New("missing to repository"))
+	}
+	if u.Cache == nil {
+		err = errors.Join(err, errors.New("missing cache"))
 	}
 
 	// Default to the current user
@@ -44,18 +47,18 @@ func (u *Upload) validate(ctx context.Context) (err error) {
 		u.User = user.Username
 	}
 
-	// Default the cache to None
-	if u.Cache == nil {
-		cacheDir, err := caches.Directory(u.To)
-		if err != nil {
-			return errors.Join(err, fmt.Errorf("getting user cache dir: %w", err))
-		}
-		cache, err := caches.Download(ctx, u.To, virt.OS(cacheDir))
-		if err != nil {
-			return errors.Join(err, fmt.Errorf("unable to download cache: %w", err))
-		}
-		u.Cache = cache
-	}
+	// // Default the cache to None
+	// if u.Cache == nil {
+	// 	cacheDir, err := caches.Directory(u.To)
+	// 	if err != nil {
+	// 		return errors.Join(err, fmt.Errorf("getting user cache dir: %w", err))
+	// 	}
+	// 	cache, err := caches.Download(ctx, u.To, virt.OS(cacheDir))
+	// 	if err != nil {
+	// 		return errors.Join(err, fmt.Errorf("unable to download cache: %w", err))
+	// 	}
+	// 	u.Cache = cache
+	// }
 
 	// Validate the tags
 	for _, tag := range u.Tags {
@@ -73,7 +76,13 @@ func (u *Upload) validate(ctx context.Context) (err error) {
 
 // Upload a directory to a repository
 func (c *Client) Upload(ctx context.Context, in *Upload) error {
-	if err := in.validate(ctx); err != nil {
+	if err := in.validate(); err != nil {
+		return err
+	}
+
+	// Download the latest commits from the cache
+	cache, err := caches.Download(ctx, in.To, in.Cache)
+	if err != nil {
 		return err
 	}
 
@@ -113,7 +122,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		// TODO: right now this will duplicate content when the file path in the
 		// pack is different from the file path in the commit. We should add a
 		// way to alias files in the pack to other packs.
-		if commitFile, ok := in.Cache.Get(fileHash); ok && commitFile.Path == path {
+		if commitFile, ok := cache.Get(fileHash); ok && commitFile.Path == path {
 			commit.Add(&commits.File{
 				Path:   path,
 				Size:   uint64(info.Size()),
@@ -175,7 +184,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	}
 
 	// Add the commit to the cache
-	if err := in.Cache.Set(commitId, commit); err != nil {
+	if err := cache.Set(commitId, commit); err != nil {
 		return err
 	}
 
