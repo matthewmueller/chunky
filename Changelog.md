@@ -1,3 +1,9 @@
+# 0.1.0 / 2024-11-16
+
+- add FindCommit
+- Fix chunking algorithm
+- Add checksum on unpacked data
+
 # 0.0.9 / 2024-11-13
 
 - improve programmatic interfaces
