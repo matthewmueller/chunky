@@ -161,14 +161,6 @@ func (p *Pack) Read(path string) (*File, error) {
 		return nil, fmt.Errorf("packs: %s not a file", path)
 	}
 
-	// packData := p.buffer.Bytes()
-
-	// var entry record
-	// entryData := packData[header.Offset : header.Offset+header.Length]
-	// if err := json.Unmarshal(entryData, &entry); err != nil {
-	// 	return nil, err
-	// }
-
 	file := &File{
 		Path:    path,
 		Mode:    record.Mode,
@@ -182,8 +174,11 @@ func (p *Pack) Read(path string) (*File, error) {
 		} else if record.Kind != kindBlob {
 			return nil, fmt.Errorf("packs: %s not a blob", chunk)
 		}
-		// data := packData[header.Offset : header.Offset+header.Length]
 		file.Data = append(file.Data, record.Data...)
+	}
+
+	if record.Hash != sha256.Hash(file.Data) {
+		return nil, fmt.Errorf("packs: %s hash mismatch", path)
 	}
 
 	return file, nil

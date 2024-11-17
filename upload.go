@@ -47,19 +47,6 @@ func (u *Upload) validate() (err error) {
 		u.User = user.Username
 	}
 
-	// // Default the cache to None
-	// if u.Cache == nil {
-	// 	cacheDir, err := caches.Directory(u.To)
-	// 	if err != nil {
-	// 		return errors.Join(err, fmt.Errorf("getting user cache dir: %w", err))
-	// 	}
-	// 	cache, err := caches.Download(ctx, u.To, virt.OS(cacheDir))
-	// 	if err != nil {
-	// 		return errors.Join(err, fmt.Errorf("unable to download cache: %w", err))
-	// 	}
-	// 	u.Cache = cache
-	// }
-
 	// Validate the tags
 	for _, tag := range u.Tags {
 		if tag == "latest" {
