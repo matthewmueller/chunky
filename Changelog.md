@@ -1,3 +1,7 @@
+# 0.1.1 / 2024-11-17
+
+- add support for specifying your own ignore and readfile functions in the uploader
+
 # 0.1.0 / 2024-11-16
 
 - add FindCommit
