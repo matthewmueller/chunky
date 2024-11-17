@@ -19,42 +19,56 @@ import (
 )
 
 type Upload struct {
-	From  fs.FS
-	To    repos.Repo
-	Cache virt.FS
-	User  string
-	Tags  []string
+	From     fs.FS
+	To       repos.Repo
+	Cache    virt.FS
+	User     string
+	Tags     []string
+	Ignore   func(path string) bool
+	ReadFile func(path string) ([]byte, error)
 }
 
-func (u *Upload) validate() (err error) {
+func (in *Upload) validate() (err error) {
 	// Required fields
-	if u.From == nil {
+	if in.From == nil {
 		err = errors.Join(err, errors.New("missing from filesystem"))
 	}
-	if u.To == nil {
+	if in.To == nil {
 		err = errors.Join(err, errors.New("missing to repository"))
 	}
-	if u.Cache == nil {
+	if in.Cache == nil {
 		err = errors.Join(err, errors.New("missing cache"))
 	}
 
 	// Default to the current user
-	if u.User == "" {
+	if in.User == "" {
 		user, err := user.Current()
 		if err != nil {
 			return errors.Join(err, fmt.Errorf("missing user and getting current user failed with: %w", err))
 		}
-		u.User = user.Username
+		in.User = user.Username
 	}
 
 	// Validate the tags
-	for _, tag := range u.Tags {
+	for _, tag := range in.Tags {
 		if tag == "latest" {
 			err = errors.Join(err, errors.New("tag cannot be 'latest'"))
 		} else if tag == "previous" {
 			err = errors.Join(err, errors.New("tag cannot be 'previous'"))
 		} else if tag == "" {
 			err = errors.Join(err, errors.New("tag cannot be empty"))
+		}
+	}
+
+	// Default to the .chunkyignore file
+	if in.Ignore == nil {
+		in.Ignore = chunkyignore.FromFS(in.From)
+	}
+
+	// Default to reading files from the 'from' filesystem
+	if in.ReadFile == nil {
+		in.ReadFile = func(path string) ([]byte, error) {
+			return fs.ReadFile(in.From, path)
 		}
 	}
 
@@ -73,7 +87,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	ignore := chunkyignore.FromFS(in.From)
+	ignore := in.Ignore
 	createdAt := time.Now().UTC()
 	commit := commits.New(in.User, createdAt)
 	commitId := commit.ID()
@@ -94,7 +108,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		}
 		defer file.Close()
 
-		data, err := fs.ReadFile(in.From, path)
+		data, err := in.ReadFile(path)
 		if err != nil {
 			return err
 		}
@@ -112,7 +126,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		if commitFile, ok := cache.Get(fileHash); ok && commitFile.Path == path {
 			commit.Add(&commits.File{
 				Path:   path,
-				Size:   uint64(info.Size()),
+				Size:   uint64(len(data)),
 				Id:     fileHash,
 				PackId: commitFile.PackId,
 			})
