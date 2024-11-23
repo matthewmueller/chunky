@@ -6,7 +6,9 @@ Efficiently store versioned data.
 
 Chunky was built to ship code and binaries to remote servers. Then once on those remote servers, Chunky helps you quickly swap versions.
 
-Chunky uses content-defined-chunking (CDC) using Restic's [chunker library](https://github.com/restic/chunker) to efficiently store data on disk. When you upload new versions, only the files that have changed will be uploaded. Preliminary estimates suggest that repos are about half the size of the original codebase, while storing every version!
+Chunky is like if rsync and git had a baby.
+
+Chunky uses content-defined-chunking (CDC) powered by Restic's [chunker library](https://github.com/restic/chunker) to efficiently store data on disk. When you upload new versions, only the files that have changed will be uploaded. Preliminary estimates suggest that repos are about half the size of the original codebase, while storing every version!
 
 **Status**: Early release. It's working and I'm using it in production, but it lacks tests and at this stage I mostly optimized the binary files for understandability. I think there's a more efficient way to link and store commits and packs. I'd encourage you to look for ways to make Chunky more efficient!
 
