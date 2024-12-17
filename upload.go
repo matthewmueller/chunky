@@ -53,8 +53,6 @@ func (in *Upload) validate() (err error) {
 	for _, tag := range in.Tags {
 		if tag == "latest" {
 			err = errors.Join(err, errors.New("tag cannot be 'latest'"))
-		} else if tag == "previous" {
-			err = errors.Join(err, errors.New("tag cannot be 'previous'"))
 		} else if tag == "" {
 			err = errors.Join(err, errors.New("tag cannot be empty"))
 		}

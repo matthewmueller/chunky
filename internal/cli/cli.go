@@ -180,7 +180,8 @@ func formatTag(writer io.Writer, color color.Writer, tag *tags.Tag, newest *comm
 		}
 	}
 	if len(tag.Commits) > 5 {
-		b.WriteString(", ...")
+		b.WriteString(", ")
+		b.WriteString(color.Dim("..."))
 	}
 	b.WriteString("]")
 	b.WriteByte('\n')
