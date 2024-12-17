@@ -9,32 +9,32 @@ import (
 	"github.com/matthewmueller/chunky/internal/tags"
 )
 
-type List struct {
+type Tags struct {
 	Repo string
 }
 
-func (in *List) command(cli cli.Command) cli.Command {
-	cmd := cli.Command("list", "list uploads to a repository")
+func (in *Tags) command(cli cli.Command) cli.Command {
+	cmd := cli.Command("tags", "list tags")
 	cmd.Arg("repo", "repo to list from").String(&in.Repo)
 	return cmd
 }
 
-func (c *CLI) List(ctx context.Context, in *List) error {
+func (c *CLI) Tags(ctx context.Context, in *Tags) error {
 	repo, err := c.loadRepo(in.Repo)
 	if err != nil {
 		return err
 	}
-	tagMap, err := tags.ReadMap(ctx, repo)
-	if err != nil {
-		return err
-	}
-	commits, err := commits.ReadAll(ctx, repo)
+	tags, err := tags.ReadAll(ctx, repo)
 	if err != nil {
 		return err
 	}
 	writer := tabwriter.NewWriter(c.Stdout, 0, 0, 1, ' ', 0)
-	for _, commit := range commits {
-		formatCommit(writer, c.Color, commit, tagMap)
+	for _, tag := range tags {
+		newest, err := commits.Read(ctx, repo, tag.Newest())
+		if err != nil {
+			return err
+		}
+		formatTag(writer, c.Color, tag, newest)
 	}
 	return writer.Flush()
 }

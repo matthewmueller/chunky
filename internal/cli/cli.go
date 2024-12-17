@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/matthewmueller/chunky"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/humanize"
+	"github.com/matthewmueller/chunky/internal/tags"
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/chunky/repos/local"
 	"github.com/matthewmueller/chunky/repos/sftp"
@@ -128,14 +130,18 @@ func (c *CLI) getUser() (string, error) {
 	return u.Username, nil
 }
 
-func formatTags(tags []string) string {
+func formatTags(tags []*tags.Tag) string {
 	if len(tags) == 0 {
 		return ""
 	}
-	return "(" + strings.Join(tags, ", ") + ")"
+	tagNames := make([]string, len(tags))
+	for i, tag := range tags {
+		tagNames[i] = tag.Name
+	}
+	return "[" + strings.Join(tagNames, ", ") + "]"
 }
 
-func formatCommit(writer io.Writer, color color.Writer, commit *commits.Commit, tagMap map[string][]string) {
+func formatCommit(writer io.Writer, color color.Writer, commit *commits.Commit, tagMap map[string][]*tags.Tag) {
 	commitId := commit.ID()
 	relTime := humanize.Time(commit.CreatedAt())
 	tags := tagMap[commitId]
@@ -143,95 +149,141 @@ func formatCommit(writer io.Writer, color color.Writer, commit *commits.Commit, 
 	writer.Write([]byte(fmt.Sprintf("%s\t%s\t%s\t%s\t%+v\n", color.Green(commitId), color.Green(formatTags(tags)), size, commit.User(), color.Dim(relTime))))
 }
 
+func formatTag(writer io.Writer, color color.Writer, tag *tags.Tag, newest *commits.Commit) {
+	b := new(bytes.Buffer)
+	b.WriteString(color.Green(tag.Name))
+	if len(tag.Commits) == 0 {
+		writer.Write(b.Bytes())
+		return
+	}
+
+	// Show the relative time of the newest commit
+	b.WriteString("\t")
+	relTime := humanize.Time(newest.CreatedAt())
+	b.WriteString(color.Dim(relTime))
+
+	// List each commit, up to 5
+	b.WriteString("\t[")
+	commitIds := tag.Commits
+	// If more than 5, only show last 5
+	if len(tag.Commits) > 5 {
+		commitIds = tag.Commits[len(tag.Commits)-5:]
+	}
+	last := len(commitIds) - 1
+	for i := last; i >= 0; i-- {
+		commitId := commitIds[i]
+		if i == last {
+			b.WriteString(commitId)
+		} else {
+			b.WriteString(", ")
+			b.WriteString(color.Dim(commitId))
+		}
+	}
+	if len(tag.Commits) > 5 {
+		b.WriteString(", ...")
+	}
+	b.WriteString("]")
+	b.WriteByte('\n')
+	writer.Write(b.Bytes())
+}
+
 func (c *CLI) Parse(ctx context.Context, args ...string) error {
 	cli := cli.New("chunky", "efficiently store versioned data")
 
-	{ // new <repo>
-		new := &Create{}
-		cmd := new.command(cli)
+	{ // create <repo>
+		in := &Create{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.Create(ctx, new)
+			return c.Create(ctx, in)
 		})
 	}
 
 	{ // upload [--tag=<tag>] <from> <to>
-		upload := &Upload{}
-		cmd := upload.command(cli)
+		in := &Upload{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.Upload(ctx, upload)
+			return c.Upload(ctx, in)
 		})
 
 	}
 
 	{ // download <from> <to> <revision> [subpaths...]
-		download := &Download{}
-		cmd := download.command(cli)
+		in := &Download{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.Download(ctx, download)
+			return c.Download(ctx, in)
 		})
 	}
 
-	{ // list <repo>
-		list := &List{}
-		cmd := list.command(cli)
+	{ // versions <repo>
+		in := &List{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.List(ctx, list)
+			return c.List(ctx, in)
 		})
 	}
 
 	{ // show <repo> <revision>
-		show := &Show{}
-		cmd := show.command(cli)
+		in := &Show{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.Show(ctx, show)
+			return c.Show(ctx, in)
 		})
 	}
 
 	{ // cat <repo> <revision> <path>
-		cat := &Cat{}
-		cmd := cat.command(cli)
+		in := &Cat{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.Cat(ctx, cat)
+			return c.Cat(ctx, in)
 		})
 	}
 
 	{ // cat-pack <repo> <pack>
-		catPack := &CatPack{}
-		cmd := catPack.command(cli)
+		in := &CatPack{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.CatPack(ctx, catPack)
+			return c.CatPack(ctx, in)
 		})
 	}
 
 	{ // cat-commit <repo> <commit>
-		catCommit := &CatCommit{}
-		cmd := catCommit.command(cli)
+		in := &CatCommit{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.CatCommit(ctx, catCommit)
+			return c.CatCommit(ctx, in)
 		})
 	}
 
 	{ // cat-tag <repo> <tag>
-		catTag := &CatTag{}
-		cmd := catTag.command(cli)
+		in := &CatTag{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.CatTag(ctx, catTag)
+			return c.CatTag(ctx, in)
 		})
 	}
 
 	{ // tag <repo> <revision> <tag>
-		tag := &Tag{}
-		cmd := tag.command(cli)
+		in := &Tag{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.Tag(ctx, tag)
+			return c.Tag(ctx, in)
+		})
+	}
+
+	{ // tags <repo>
+		in := &Tags{}
+		cmd := in.command(cli)
+		cmd.Run(func(ctx context.Context) error {
+			return c.Tags(ctx, in)
 		})
 	}
 
 	{ // clean <repo>
-		clean := &Clean{}
-		cmd := clean.command(cli)
+		in := &Clean{}
+		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.Clean(ctx, clean)
+			return c.Clean(ctx, in)
 		})
 	}
 

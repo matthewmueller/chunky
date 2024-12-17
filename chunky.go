@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"sort"
 
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/tags"
@@ -56,30 +55,11 @@ func (in *ListTags) validate() (err error) {
 	return err
 }
 
-type Tag struct {
-	Name    string
-	Commits []string
-}
+type Tag = tags.Tag
 
 func (c *Client) ListTags(ctx context.Context, in *ListTags) (allTags []*Tag, err error) {
 	if err := in.validate(); err != nil {
 		return nil, err
 	}
-	commitToTags, err := tags.ReadMap(ctx, in.Repo)
-	if err != nil {
-		return nil, err
-	}
-	tagMap := map[string][]string{}
-	for commit, tag := range commitToTags {
-		for _, tag := range tag {
-			tagMap[tag] = append(tagMap[tag], commit)
-		}
-	}
-	for tag, commits := range tagMap {
-		allTags = append(allTags, &Tag{tag, commits})
-	}
-	sort.Slice(allTags, func(i, j int) bool {
-		return allTags[i].Name < allTags[j].Name
-	})
-	return allTags, nil
+	return tags.ReadAll(ctx, in.Repo)
 }

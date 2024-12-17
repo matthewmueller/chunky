@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/internal/commits"
-	"github.com/matthewmueller/virt"
+	"github.com/matthewmueller/chunky/internal/tags"
 )
 
 type Tag struct {
@@ -36,14 +38,20 @@ func (c *CLI) Tag(ctx context.Context, in *Tag) error {
 		return fmt.Errorf("cli: unable to read commit for %s: %w", in.Revision, err)
 	}
 
-	// Create the tag file
-	tree := virt.Tree{
-		fmt.Sprintf("tags/%s", in.Tag): &virt.File{
-			Data: []byte(commit.ID()),
-			Mode: 0644,
-		},
+	// If the tag already exists, append the commit to the end of the file
+	tag, err := tags.Read(ctx, repo, in.Tag)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("cli: unable to read tag for %s: %w", in.Tag, err)
+		}
+		tag = &tags.Tag{
+			Name: in.Tag,
+		}
 	}
 
+	// Append the commit to the tag
+	tag.Commits = append(tag.Commits, commit.ID())
+
 	// Upload the tag file
-	return repo.Upload(ctx, tree)
+	return repo.Upload(ctx, tag.Tree())
 }
