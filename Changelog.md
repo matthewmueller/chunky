@@ -1,3 +1,10 @@
+# 0.1.2 / 2024-12-26
+
+- expose TagRevision method
+- remove old code and formatting
+- store tag history
+- support programmatically listing tags
+
 # 0.1.1 / 2024-11-17
 
 - add support for specifying your own ignore and readfile functions in the uploader
