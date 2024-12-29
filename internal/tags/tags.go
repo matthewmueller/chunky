@@ -31,6 +31,18 @@ func (t *Tag) Tree() virt.Tree {
 	}
 }
 
+// Tree returns a virtual filesystem tree for uploading
+func (t *Tag) Chan() <-chan *virt.File {
+	ch := make(chan *virt.File, 1)
+	ch <- &virt.File{
+		Path: path.Join("tags", t.Name),
+		Mode: 0644,
+		Data: []byte(strings.Join(t.Commits, "\n") + "\n"),
+	}
+	close(ch)
+	return ch
+}
+
 func Latest(ref string) *virt.File {
 	return &virt.File{
 		Path: filepath.Join("tags", "latest"),

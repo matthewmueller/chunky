@@ -108,5 +108,5 @@ func (c *Client) TagRevision(ctx context.Context, in *TagRevision) error {
 	tag.Commits = append(tag.Commits, commit.ID())
 
 	// Upload the tag file
-	return in.Repo.Upload(ctx, tag.Tree())
+	return in.Repo.Upload(ctx, tag.Chan())
 }

@@ -67,57 +67,41 @@ func (c *Repo) Close() (err error) {
 	return c.closer()
 }
 
-func (c *Repo) Upload(ctx context.Context, from fs.FS) error {
+func (c *Repo) Upload(ctx context.Context, fromCh <-chan *virt.File) error {
 	eg := new(errgroup.Group)
-	if err := fs.WalkDir(from, ".", func(path string, de fs.DirEntry, err error) error {
-		if err != nil {
-			return fmt.Errorf("sftp: unable to walk %q: %w", path, err)
-		}
-
-		remotePath := filepath.Join(c.dir, path)
-
-		// Get the fileinfo about the file
-		info, err := de.Info()
-		if err != nil {
-			return fmt.Errorf("sftp: unable to get file info for %q: %w", path, err)
-		}
+	for file := range fromCh {
+		remotePath := filepath.Join(c.dir, file.Path)
 
 		// Handle creating directories
-		if de.IsDir() {
-			return mkdirAll(c.sftp, remotePath, info.Mode())
+		if file.IsDir() {
+			eg.Go(func() error {
+				return mkdirAll(c.sftp, remotePath, file.Mode)
+			})
+			continue
 		}
 
 		// Handle file uploads concurrently
 		eg.Go(func() error {
-			return c.uploadFile(from, path, remotePath, info.Mode())
+			return c.uploadFile(file, remotePath)
 		})
-
-		return nil
-	}); err != nil {
-		return fmt.Errorf("sftp: unable to walk directory: %w", err)
 	}
+
 	if err := eg.Wait(); err != nil {
 		return fmt.Errorf("sftp: unable to upload files: %w", err)
 	}
 	return nil
 }
 
-func (c *Repo) uploadFile(from fs.FS, localPath, remotePath string, mode fs.FileMode) error {
-	// Read data from the local file
-	data, err := fs.ReadFile(from, localPath)
-	if err != nil {
-		return fmt.Errorf("sftp: unable to read local file %q: %w", localPath, err)
-	}
-
+func (c *Repo) uploadFile(file *virt.File, remotePath string) error {
 	// Write to the remote file
-	return writeFile(c.sftp, remotePath, data, mode)
+	return writeFile(c.sftp, remotePath, file.Data, file.Mode)
 }
 
-func (c *Repo) Download(ctx context.Context, to virt.FS, paths ...string) error {
+func (c *Repo) Download(ctx context.Context, toCh chan<- *virt.File, paths ...string) error {
 	eg := new(errgroup.Group)
 	for _, path := range paths {
 		eg.Go(func() error {
-			return c.downloadFile(to, path)
+			return c.downloadFile(toCh, path)
 		})
 	}
 	if err := eg.Wait(); err != nil {
@@ -126,11 +110,11 @@ func (c *Repo) Download(ctx context.Context, to virt.FS, paths ...string) error 
 	return nil
 }
 
-func (c *Repo) downloadFile(to virt.FS, path string) error {
+func (c *Repo) downloadFile(toCh chan<- *virt.File, path string) error {
 	remotePath := filepath.Join(c.dir, path)
 	remoteFile, err := c.sftp.Open(remotePath)
 	if err != nil {
-		return fmt.Errorf("sftp: unable to open remote file %q: %w", remotePath, err)
+		return fmt.Errorf("sftp: unable to open remote file for download %q: %w", remotePath, err)
 	}
 	defer remoteFile.Close()
 	fileInfo, err := remoteFile.Stat()
@@ -139,8 +123,9 @@ func (c *Repo) downloadFile(to virt.FS, path string) error {
 	}
 	// Handle directories
 	if fileInfo.IsDir() {
-		if err := to.MkdirAll(path, fileInfo.Mode()); err != nil {
-			return fmt.Errorf("sftp: unable to create directory %q: %w", path, err)
+		toCh <- &virt.File{
+			Path: path,
+			Mode: fileInfo.Mode(),
 		}
 		return nil
 	}
@@ -149,7 +134,12 @@ func (c *Repo) downloadFile(to virt.FS, path string) error {
 	if err != nil {
 		return fmt.Errorf("sftp: unable to read remote file %q: %w", remotePath, err)
 	}
-	return to.WriteFile(path, data, fileInfo.Mode())
+	toCh <- &virt.File{
+		Path: path,
+		Data: data,
+		Mode: fileInfo.Mode(),
+	}
+	return nil
 }
 
 func (c *Repo) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error {

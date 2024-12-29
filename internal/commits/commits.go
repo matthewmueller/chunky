@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"path"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -29,6 +30,7 @@ func New(user string, createdAt time.Time) *Commit {
 }
 
 type Commit struct {
+	mu        sync.RWMutex
 	user      string
 	createdAt time.Time
 	size      uint64
@@ -45,6 +47,8 @@ type Pack struct {
 }
 
 func (c *Commit) Packs() (packs []*Pack) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	packMap := make(map[string]*Pack)
 	for _, file := range c.files {
 		pack, ok := packMap[file.PackId]
@@ -64,18 +68,26 @@ func (c *Commit) Packs() (packs []*Pack) {
 }
 
 func (c *Commit) ID() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return timeid.Encode(c.createdAt)
 }
 
 func (c *Commit) CreatedAt() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.createdAt
 }
 
 func (c *Commit) Size() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return uint64(c.size)
 }
 
 func (c *Commit) User() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.user
 }
 
@@ -115,6 +127,8 @@ func findFile(commit *Commit, path string) *File {
 }
 
 func (c *Commit) Add(file *File) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if findFile(c, file.Path) != nil {
 		return
 	}

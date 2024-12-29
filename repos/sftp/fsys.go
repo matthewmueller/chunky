@@ -2,6 +2,7 @@ package sftp
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -65,7 +66,17 @@ func writeFile(sftp *sftp.Client, name string, data []byte, mode fs.FileMode) er
 	// Open the remote file
 	remoteFile, err := sftp.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
-		return fmt.Errorf("sftp: unable to open remote file %q: %w", name, err)
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("sftp: unable to open remote file for upload %q: %w", name, err)
+		}
+		if err := mkdirAll(sftp, path.Dir(name), 0755); err != nil {
+			return fmt.Errorf("sftp: unable to create directory for upload %q: %w", name, err)
+		}
+		// Try again
+		remoteFile, err = sftp.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+		if err != nil {
+			return fmt.Errorf("sftp: unable to open remote file for upload %q: %w", name, err)
+		}
 	}
 	defer remoteFile.Close()
 

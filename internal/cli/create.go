@@ -29,15 +29,19 @@ func (c *CLI) Create(ctx context.Context, in *Create) error {
 		return err
 	}
 	// Create the repository
-	tree := virt.Tree{}
-	tree["commits"] = &virt.File{
+	fileCh := make(chan *virt.File, 3)
+	fileCh <- &virt.File{
+		Path: "commits",
 		Mode: fs.ModeDir | 0755,
 	}
-	tree["packs"] = &virt.File{
+	fileCh <- &virt.File{
+		Path: "packs",
 		Mode: fs.ModeDir | 0755,
 	}
-	tree["tags"] = &virt.File{
+	fileCh <- &virt.File{
+		Path: "tags",
 		Mode: fs.ModeDir | 0755,
 	}
-	return repo.Upload(ctx, tree)
+	close(fileCh)
+	return repo.Upload(ctx, fileCh)
 }
