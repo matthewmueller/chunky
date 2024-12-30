@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/virt"
 )
 
 type Tag struct {
@@ -22,19 +21,9 @@ func (t *Tag) Newest() string {
 }
 
 // Tree returns a virtual filesystem tree for uploading
-func (t *Tag) Tree() virt.Tree {
-	return virt.Tree{
-		path.Join("tags", t.Name): &virt.File{
-			Mode: 0644,
-			Data: []byte(strings.Join(t.Commits, "\n") + "\n"),
-		},
-	}
-}
-
-// Tree returns a virtual filesystem tree for uploading
-func (t *Tag) Chan() <-chan *virt.File {
-	ch := make(chan *virt.File, 1)
-	ch <- &virt.File{
+func (t *Tag) Chan() <-chan *repos.File {
+	ch := make(chan *repos.File, 1)
+	ch <- &repos.File{
 		Path: path.Join("tags", t.Name),
 		Mode: 0644,
 		Data: []byte(strings.Join(t.Commits, "\n") + "\n"),
@@ -43,16 +32,16 @@ func (t *Tag) Chan() <-chan *virt.File {
 	return ch
 }
 
-func Latest(ref string) *virt.File {
-	return &virt.File{
+func Latest(ref string) *repos.File {
+	return &repos.File{
 		Path: filepath.Join("tags", "latest"),
 		Mode: 0644,
 		Data: []byte(ref),
 	}
 }
 
-func New(name, ref string) *virt.File {
-	return &virt.File{
+func New(name, ref string) *repos.File {
+	return &repos.File{
 		Path: filepath.Join("tags", name),
 		Mode: 0644,
 		Data: []byte(ref),

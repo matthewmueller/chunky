@@ -6,7 +6,6 @@ import (
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/virt"
 )
 
 type Create struct {
@@ -29,16 +28,16 @@ func (c *CLI) Create(ctx context.Context, in *Create) error {
 		return err
 	}
 	// Create the repository
-	fileCh := make(chan *virt.File, 3)
-	fileCh <- &virt.File{
+	fileCh := make(chan *repos.File, 3)
+	fileCh <- &repos.File{
 		Path: "commits",
 		Mode: fs.ModeDir | 0755,
 	}
-	fileCh <- &virt.File{
+	fileCh <- &repos.File{
 		Path: "packs",
 		Mode: fs.ModeDir | 0755,
 	}
-	fileCh <- &virt.File{
+	fileCh <- &repos.File{
 		Path: "tags",
 		Mode: fs.ModeDir | 0755,
 	}

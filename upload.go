@@ -159,7 +159,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 
 	// pack file + commit file + latest ref + tags
 	capacity := 1 + 1 + 1 + len(in.Tags)
-	fromCh := make(chan *virt.File, capacity)
+	fromCh := make(chan *repos.File, capacity)
 
 	eg := new(errgroup.Group)
 	eg.Go(func() error {
@@ -173,7 +173,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 	if len(packData) > 0 {
-		fromCh <- &virt.File{
+		fromCh <- &repos.File{
 			Path:    path.Join("packs", commitId),
 			Data:    packData,
 			Mode:    0644,
@@ -187,7 +187,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		close(fromCh)
 		return err
 	}
-	fromCh <- &virt.File{
+	fromCh <- &repos.File{
 		Path:    path.Join("commits", commitId),
 		Data:    commitData,
 		Mode:    0644,
@@ -201,7 +201,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	}
 
 	// Add the latest ref
-	fromCh <- &virt.File{
+	fromCh <- &repos.File{
 		Path: path.Join("tags", "latest"),
 		Data: []byte(commitId),
 		Mode: 0644,
@@ -209,7 +209,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 
 	// Tag the revision
 	for _, tag := range in.Tags {
-		fromCh <- &virt.File{
+		fromCh <- &repos.File{
 			Path: fmt.Sprintf("tags/%s", tag),
 			Data: []byte(commitId),
 			Mode: 0644,

@@ -41,6 +41,6 @@ func (c *CLI) Download(ctx context.Context, in *Download) error {
 		From:     repo,
 		To:       to,
 		Revision: in.Revision,
-		Sync:     in.Sync,
+		// Sync:     in.Sync,
 	})
 }

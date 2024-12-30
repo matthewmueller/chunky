@@ -23,7 +23,7 @@ type Repo struct {
 
 var _ repos.Repo = (*Repo)(nil)
 
-func (r *Repo) Upload(ctx context.Context, fromCh <-chan *virt.File) error {
+func (r *Repo) Upload(ctx context.Context, fromCh <-chan *repos.File) error {
 	for file := range fromCh {
 		if file.IsDir() {
 			if err := r.fsys.MkdirAll(file.Path, file.Mode); err != nil {
@@ -46,7 +46,7 @@ func (r *Repo) Upload(ctx context.Context, fromCh <-chan *virt.File) error {
 	return nil
 }
 
-func (r *Repo) Download(ctx context.Context, toCh chan<- *virt.File, paths ...string) error {
+func (r *Repo) Download(ctx context.Context, toCh chan<- *repos.File, paths ...string) error {
 	target := path.Join(paths...)
 	if target == "" {
 		target = "."

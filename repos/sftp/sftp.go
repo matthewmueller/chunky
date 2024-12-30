@@ -13,7 +13,6 @@ import (
 
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/sshx"
-	"github.com/matthewmueller/virt"
 	"github.com/pkg/sftp"
 	"golang.org/x/sync/errgroup"
 )
@@ -67,7 +66,7 @@ func (c *Repo) Close() (err error) {
 	return c.closer()
 }
 
-func (c *Repo) Upload(ctx context.Context, fromCh <-chan *virt.File) error {
+func (c *Repo) Upload(ctx context.Context, fromCh <-chan *repos.File) error {
 	eg := new(errgroup.Group)
 	for file := range fromCh {
 		remotePath := filepath.Join(c.dir, file.Path)
@@ -92,12 +91,12 @@ func (c *Repo) Upload(ctx context.Context, fromCh <-chan *virt.File) error {
 	return nil
 }
 
-func (c *Repo) uploadFile(file *virt.File, remotePath string) error {
+func (c *Repo) uploadFile(file *repos.File, remotePath string) error {
 	// Write to the remote file
 	return writeFile(c.sftp, remotePath, file.Data, file.Mode)
 }
 
-func (c *Repo) Download(ctx context.Context, toCh chan<- *virt.File, paths ...string) error {
+func (c *Repo) Download(ctx context.Context, toCh chan<- *repos.File, paths ...string) error {
 	eg := new(errgroup.Group)
 	for _, path := range paths {
 		eg.Go(func() error {
@@ -110,7 +109,7 @@ func (c *Repo) Download(ctx context.Context, toCh chan<- *virt.File, paths ...st
 	return nil
 }
 
-func (c *Repo) downloadFile(toCh chan<- *virt.File, path string) error {
+func (c *Repo) downloadFile(toCh chan<- *repos.File, path string) error {
 	remotePath := filepath.Join(c.dir, path)
 	remoteFile, err := c.sftp.Open(remotePath)
 	if err != nil {
@@ -123,7 +122,7 @@ func (c *Repo) downloadFile(toCh chan<- *virt.File, path string) error {
 	}
 	// Handle directories
 	if fileInfo.IsDir() {
-		toCh <- &virt.File{
+		toCh <- &repos.File{
 			Path: path,
 			Mode: fileInfo.Mode(),
 		}
@@ -134,7 +133,7 @@ func (c *Repo) downloadFile(toCh chan<- *virt.File, path string) error {
 	if err != nil {
 		return fmt.Errorf("sftp: unable to read remote file %q: %w", remotePath, err)
 	}
-	toCh <- &virt.File{
+	toCh <- &repos.File{
 		Path: path,
 		Data: data,
 		Mode: fileInfo.Mode(),
