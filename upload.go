@@ -132,7 +132,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 			return nil
 		}
 
-		entry := &packs.File{
+		entry := &repos.File{
 			Path:    path,
 			Mode:    info.Mode(),
 			ModTime: info.ModTime(),

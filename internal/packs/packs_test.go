@@ -9,10 +9,11 @@ import (
 
 	"github.com/matryer/is"
 	"github.com/matthewmueller/chunky/internal/packs"
+	"github.com/matthewmueller/chunky/repos"
 )
 
-func newFile(path string, data []byte, mode fs.FileMode, modTime time.Time) *packs.File {
-	return &packs.File{
+func newFile(path string, data []byte, mode fs.FileMode, modTime time.Time) *repos.File {
+	return &repos.File{
 		Path:    path,
 		Mode:    mode,
 		ModTime: modTime,

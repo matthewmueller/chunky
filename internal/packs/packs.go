@@ -35,14 +35,6 @@ const (
 	kindFile
 )
 
-type File struct {
-	Path    string
-	Mode    fs.FileMode
-	Size    uint64
-	ModTime time.Time
-	Data    []byte
-}
-
 type record struct {
 	Kind    kind        `json:"kind,omitempty"`
 	Hash    string      `json:"hash,omitempty"`
@@ -54,7 +46,7 @@ type record struct {
 	Data    []byte      `json:"data,omitempty"`
 }
 
-func (p *Pack) Add(file *File) error {
+func (p *Pack) Add(file *repos.File) error {
 	// Create the file state
 	state := &record{
 		Kind:    kindFile,
@@ -153,7 +145,7 @@ func (p *Pack) findRecordByPath(path string) (*record, error) {
 	return nil, fmt.Errorf("packs: record %q not found", path)
 }
 
-func (p *Pack) Read(path string) (*File, error) {
+func (p *Pack) Read(path string) (*repos.File, error) {
 	record, err := p.findRecordByPath(path)
 	if err != nil {
 		return nil, err
@@ -161,7 +153,7 @@ func (p *Pack) Read(path string) (*File, error) {
 		return nil, fmt.Errorf("packs: %s not a file", path)
 	}
 
-	file := &File{
+	file := &repos.File{
 		Path:    path,
 		Mode:    record.Mode,
 		ModTime: time.Unix(record.ModTime, 0),
