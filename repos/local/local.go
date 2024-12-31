@@ -60,7 +60,7 @@ func (r *Repo) Download(ctx context.Context, toCh chan<- *repos.File, paths ...s
 	if target == "" {
 		target = "."
 	}
-	return fs.WalkDir(r.fsys, target, func(path string, d fs.DirEntry, err error) error {
+	return r.Walk(ctx, target, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
