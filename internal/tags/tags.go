@@ -30,6 +30,15 @@ func (t *Tag) Tree() repos.Tree {
 	}
 }
 
+// File returns a repo file for uploading
+func (t *Tag) File() *repos.File {
+	return &repos.File{
+		Path: path.Join("tags", t.Name),
+		Mode: 0644,
+		Data: []byte(strings.Join(t.Commits, "\n") + "\n"),
+	}
+}
+
 func Latest(ref string) *repos.File {
 	return &repos.File{
 		Path: filepath.Join("tags", "latest"),

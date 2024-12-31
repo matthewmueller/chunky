@@ -11,7 +11,6 @@ type Download struct {
 	From     string
 	To       string
 	Revision string
-	Sync     bool
 }
 
 func (d *Download) command(cli cli.Command) cli.Command {
@@ -19,7 +18,6 @@ func (d *Download) command(cli cli.Command) cli.Command {
 	cmd.Arg("from", "repository to download from").String(&d.From)
 	cmd.Arg("revision", "revision to download").String(&d.Revision)
 	cmd.Arg("to", "directory to download to").String(&d.To)
-	cmd.Flag("sync", "sync the directory").Bool(&d.Sync).Default(false)
 	return cmd
 }
 
@@ -41,6 +39,5 @@ func (c *CLI) Download(ctx context.Context, in *Download) error {
 		From:     repo,
 		To:       to,
 		Revision: in.Revision,
-		Sync:     in.Sync,
 	})
 }

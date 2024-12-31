@@ -4,18 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/virt"
 )
 
 type Download struct {
 	From     repos.Repo
 	To       repos.FS
 	Revision string
-	Sync     bool
 }
 
 func (d *Download) validate() (err error) {
@@ -45,8 +45,7 @@ func (c *Client) Download(ctx context.Context, in *Download) error {
 		return fmt.Errorf("cli: unable to load commit %q: %w", in.Revision, err)
 	}
 
-	// Download into a virtual tree
-	tree := repos.Tree{}
+	// Download to the filesystem
 	for _, commitPack := range commit.Packs() {
 		pack, err := packs.Read(ctx, in.From, commitPack.ID)
 		if err != nil {
@@ -57,18 +56,21 @@ func (c *Client) Download(ctx context.Context, in *Download) error {
 			if err != nil {
 				return fmt.Errorf("cli: unable to read file %q: %w", file.Path, err)
 			}
-			tree[file.Path] = &repos.File{
-				Path:    file.Path,
-				Data:    packFile.Data,
-				Mode:    packFile.Mode,
-				ModTime: packFile.ModTime,
+			if err := in.To.WriteFile(file.Path, packFile.Data, packFile.Mode); err != nil {
+				if !errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("cli: unable to write file %q: %w", file.Path, err)
+				}
+				// Create the directory if it doesn't exist
+				if err := in.To.MkdirAll(filepath.Dir(file.Path), 0755); err != nil {
+					return fmt.Errorf("cli: unable to create directory %q: %w", file.Path, err)
+				}
+				// Retry writing the file
+				if err := in.To.WriteFile(file.Path, packFile.Data, packFile.Mode); err != nil {
+					return fmt.Errorf("cli: unable to write file %q: %w", file.Path, err)
+				}
 			}
 		}
 	}
 
-	// Write the virtual tree to the filesystem
-	if in.Sync {
-		return virt.SyncFS(tree, in.To)
-	}
-	return virt.WriteFS(tree, in.To)
+	return nil
 }

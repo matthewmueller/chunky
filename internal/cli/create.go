@@ -28,15 +28,19 @@ func (c *CLI) Create(ctx context.Context, in *Create) error {
 		return err
 	}
 	// Create the repository
-	tree := repos.Tree{}
-	tree["commits"] = &repos.File{
+	fileCh := make(chan *repos.File, 3)
+	fileCh <- &repos.File{
+		Path: "commits",
 		Mode: fs.ModeDir | 0755,
 	}
-	tree["packs"] = &repos.File{
+	fileCh <- &repos.File{
+		Path: "packs",
 		Mode: fs.ModeDir | 0755,
 	}
-	tree["tags"] = &repos.File{
+	fileCh <- &repos.File{
+		Path: "tags",
 		Mode: fs.ModeDir | 0755,
 	}
-	return repo.Upload(ctx, tree)
+	close(fileCh)
+	return repo.Upload(ctx, fileCh)
 }
