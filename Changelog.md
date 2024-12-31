@@ -1,3 +1,9 @@
+# 0.1.3 / 2024-12-31
+
+- ensure chunky works without cgo
+- switch to a channel-based implementation
+- consolidate and alias virt into repos
+
 # 0.1.2 / 2024-12-26
 
 - expose TagRevision method
