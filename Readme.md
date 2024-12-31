@@ -144,7 +144,7 @@ type Repo interface {
 	// Upload from a filesystem to the repository
 	Upload(ctx context.Context, from fs.FS) error
 	// Download paths from the repository to a filesystem
-	Download(ctx context.Context, to virt.FS, paths ...string) error
+	Download(ctx context.Context, to repos.FS, paths ...string) error
 	// Walk the repository
 	Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error
 	// Close the repository

@@ -13,7 +13,7 @@ import (
 
 type Download struct {
 	From     repos.Repo
-	To       virt.FS
+	To       repos.FS
 	Revision string
 	Sync     bool
 }
@@ -46,7 +46,7 @@ func (c *Client) Download(ctx context.Context, in *Download) error {
 	}
 
 	// Download into a virtual tree
-	tree := virt.Tree{}
+	tree := repos.Tree{}
 	for _, commitPack := range commit.Packs() {
 		pack, err := packs.Read(ctx, in.From, commitPack.ID)
 		if err != nil {
@@ -57,7 +57,7 @@ func (c *Client) Download(ctx context.Context, in *Download) error {
 			if err != nil {
 				return fmt.Errorf("cli: unable to read file %q: %w", file.Path, err)
 			}
-			tree[file.Path] = &virt.File{
+			tree[file.Path] = &repos.File{
 				Path:    file.Path,
 				Data:    packFile.Data,
 				Mode:    packFile.Mode,

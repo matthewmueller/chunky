@@ -244,7 +244,7 @@ func FindFile(commit *Commit, path string) (*File, error) {
 	return file, nil
 }
 
-func ReadFile(ctx context.Context, repo repos.Repo, file *File) (*packs.File, error) {
+func ReadFile(ctx context.Context, repo repos.Repo, file *File) (*repos.File, error) {
 	packFile, err := repos.Download(ctx, repo, path.Join("packs", file.PackId))
 	if err != nil {
 		return nil, fmt.Errorf("commits: unable to download pack %q: %w", file.PackId, err)

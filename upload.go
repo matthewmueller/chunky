@@ -15,13 +15,12 @@ import (
 	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/virt"
 )
 
 type Upload struct {
 	From     fs.FS
 	To       repos.Repo
-	Cache    virt.FS
+	Cache    repos.FS
 	User     string
 	Tags     []string
 	Ignore   func(path string) bool
@@ -131,7 +130,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 			return nil
 		}
 
-		entry := &packs.File{
+		entry := &repos.File{
 			Path:    path,
 			Mode:    info.Mode(),
 			ModTime: info.ModTime(),
@@ -156,7 +155,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	tree := virt.Tree{}
+	tree := repos.Tree{}
 
 	// Add the pack to the tree
 	packData, err := pack.Pack()
@@ -164,7 +163,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 	if len(packData) > 0 {
-		tree[path.Join("packs", commitId)] = &virt.File{
+		tree[path.Join("packs", commitId)] = &repos.File{
 			Data:    packData,
 			Mode:    0644,
 			ModTime: createdAt,
@@ -176,7 +175,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	if err != nil {
 		return err
 	}
-	tree[path.Join("commits", commitId)] = &virt.File{
+	tree[path.Join("commits", commitId)] = &repos.File{
 		Data:    commitData,
 		Mode:    0644,
 		ModTime: createdAt,
@@ -188,14 +187,14 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	}
 
 	// Add the latest ref
-	tree["tags/latest"] = &virt.File{
+	tree["tags/latest"] = &repos.File{
 		Data: []byte(commitId),
 		Mode: 0644,
 	}
 
 	// Tag the revision
 	for _, tag := range in.Tags {
-		tree[fmt.Sprintf("tags/%s", tag)] = &virt.File{
+		tree[fmt.Sprintf("tags/%s", tag)] = &repos.File{
 			Data: []byte(commitId),
 			Mode: 0644,
 		}

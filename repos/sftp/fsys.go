@@ -7,13 +7,13 @@ import (
 	"os"
 	"path"
 
-	"github.com/matthewmueller/virt"
+	"github.com/matthewmueller/chunky/repos"
 	"github.com/pkg/sftp"
 )
 
 var _ fs.ReadDirFS = (*Repo)(nil)
 var _ fs.StatFS = (*Repo)(nil)
-var _ virt.FS = (*Repo)(nil)
+var _ repos.FS = (*Repo)(nil)
 
 func (r *Repo) Open(name string) (fs.File, error) {
 	return r.sftp.Open(path.Join(r.dir, name))

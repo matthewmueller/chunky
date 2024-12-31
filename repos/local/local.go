@@ -8,12 +8,12 @@ import (
 	"github.com/matthewmueller/virt"
 )
 
-func New(fsys virt.FS) *Repo {
+func New(fsys repos.FS) *Repo {
 	return &Repo{fsys}
 }
 
 type Repo struct {
-	fsys virt.FS
+	fsys repos.FS
 }
 
 var _ repos.Repo = (*Repo)(nil)
@@ -22,7 +22,7 @@ func (r *Repo) Upload(ctx context.Context, from fs.FS) error {
 	return virt.WriteFS(from, r.fsys)
 }
 
-func (r *Repo) Download(ctx context.Context, to virt.FS, paths ...string) error {
+func (r *Repo) Download(ctx context.Context, to repos.FS, paths ...string) error {
 	return virt.WriteFS(r.fsys, to, paths...)
 }
 

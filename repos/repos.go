@@ -11,6 +11,10 @@ import (
 	"github.com/matthewmueller/virt"
 )
 
+type Tree = virt.Tree
+type File = virt.File
+type FS = virt.FS
+
 // Parse parses a repository path and returns a URL.
 func Parse(repoPath string) (*url.URL, error) {
 	// Handle SSH-like paths
@@ -42,7 +46,7 @@ type Repo interface {
 	// Upload from a filesystem to the repository
 	Upload(ctx context.Context, from fs.FS) error
 	// Download paths from the repository to a filesystem
-	Download(ctx context.Context, to virt.FS, paths ...string) error
+	Download(ctx context.Context, to FS, paths ...string) error
 	// Walk the repository
 	Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error
 	// Close the repository
@@ -50,8 +54,8 @@ type Repo interface {
 }
 
 // Download a single file from the repository.
-func Download(ctx context.Context, repo Repo, path string) (*virt.File, error) {
-	fsys := virt.Tree{}
+func Download(ctx context.Context, repo Repo, path string) (*File, error) {
+	fsys := Tree{}
 	if err := repo.Download(ctx, fsys, path); err != nil {
 		return nil, fmt.Errorf("repos: unable to download file %q: %w", path, err)
 	}

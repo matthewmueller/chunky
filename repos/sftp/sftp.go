@@ -13,7 +13,6 @@ import (
 
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/sshx"
-	"github.com/matthewmueller/virt"
 	"github.com/pkg/sftp"
 	"golang.org/x/sync/errgroup"
 )
@@ -113,7 +112,7 @@ func (c *Repo) uploadFile(from fs.FS, localPath, remotePath string, mode fs.File
 	return writeFile(c.sftp, remotePath, data, mode)
 }
 
-func (c *Repo) Download(ctx context.Context, to virt.FS, paths ...string) error {
+func (c *Repo) Download(ctx context.Context, to repos.FS, paths ...string) error {
 	eg := new(errgroup.Group)
 	for _, path := range paths {
 		eg.Go(func() error {
@@ -126,7 +125,7 @@ func (c *Repo) Download(ctx context.Context, to virt.FS, paths ...string) error 
 	return nil
 }
 
-func (c *Repo) downloadFile(to virt.FS, path string) error {
+func (c *Repo) downloadFile(to repos.FS, path string) error {
 	remotePath := filepath.Join(c.dir, path)
 	remoteFile, err := c.sftp.Open(remotePath)
 	if err != nil {

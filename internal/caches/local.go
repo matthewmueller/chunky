@@ -9,11 +9,10 @@ import (
 
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/virt"
 )
 
 // Download the cache to the local filesystem
-func Download(ctx context.Context, from repos.Repo, to virt.FS) (*Local, error) {
+func Download(ctx context.Context, from repos.Repo, to repos.FS) (*Local, error) {
 	cache, err := Load(to)
 	if err != nil {
 		return nil, err
@@ -24,7 +23,7 @@ func Download(ctx context.Context, from repos.Repo, to virt.FS) (*Local, error) 
 	return cache, nil
 }
 
-func Load(fsys virt.FS) (*Local, error) {
+func Load(fsys repos.FS) (*Local, error) {
 	cache := &Local{
 		fsys,
 		map[string]*commits.File{},
@@ -73,7 +72,7 @@ func isCacheInvalid(err error) bool {
 }
 
 type Local struct {
-	fsys    virt.FS
+	fsys    repos.FS
 	files   map[string]*commits.File   // file_hash -> pack_file
 	commits map[string]*commits.Commit // commit_id -> commit
 }

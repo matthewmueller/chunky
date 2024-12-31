@@ -84,7 +84,7 @@ func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 	}
 }
 
-func (c *CLI) loadFS(path string) (virt.FS, error) {
+func (c *CLI) loadFS(path string) (repos.FS, error) {
 	url, err := repos.Parse(path)
 	if err != nil {
 		return nil, fmt.Errorf("cli: parsing repo path: %w", err)
@@ -108,7 +108,7 @@ func (c *CLI) cacheDir(repoUrl *url.URL) (string, error) {
 	return dir, nil
 }
 
-func (c *CLI) loadCache(repoUrl *url.URL) (virt.FS, error) {
+func (c *CLI) loadCache(repoUrl *url.URL) (repos.FS, error) {
 	cacheDir, err := c.cacheDir(repoUrl)
 	if err != nil {
 		return nil, err

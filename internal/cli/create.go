@@ -6,7 +6,6 @@ import (
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/virt"
 )
 
 type Create struct {
@@ -29,14 +28,14 @@ func (c *CLI) Create(ctx context.Context, in *Create) error {
 		return err
 	}
 	// Create the repository
-	tree := virt.Tree{}
-	tree["commits"] = &virt.File{
+	tree := repos.Tree{}
+	tree["commits"] = &repos.File{
 		Mode: fs.ModeDir | 0755,
 	}
-	tree["packs"] = &virt.File{
+	tree["packs"] = &repos.File{
 		Mode: fs.ModeDir | 0755,
 	}
-	tree["tags"] = &virt.File{
+	tree["tags"] = &repos.File{
 		Mode: fs.ModeDir | 0755,
 	}
 	return repo.Upload(ctx, tree)
