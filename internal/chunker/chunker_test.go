@@ -21,7 +21,7 @@ func TestChunker(t *testing.T) {
 	is.NoErr(err)
 
 	// create a chunker
-	c := chunker.New(data)
+	c := chunker.New(bytes.NewReader(data))
 
 	chunks := []chunker.Chunk{}
 	for {

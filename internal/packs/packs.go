@@ -58,7 +58,7 @@ func (p *Pack) Add(file *repos.File) error {
 	}
 
 	// Chunk the data
-	chunker := chunker.New(file.Data)
+	chunker := chunker.New(bytes.NewReader(file.Data))
 	for {
 		chunk, err := chunker.Chunk()
 		if err != nil {

@@ -1,16 +1,16 @@
 package chunker
 
 import (
-	"bytes"
+	"io"
 
 	"github.com/restic/chunker"
 )
 
 var pol = chunker.Pol(0x3DA3358B4DC173)
 
-func New(data []byte) Chunker {
+func New(r io.Reader) Chunker {
 	return &defaultChunker{
-		chunker.New(bytes.NewReader(data), pol),
+		chunker.New(r, pol),
 	}
 }
 
