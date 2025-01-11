@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 
 	"github.com/matthewmueller/chunky/internal/commits"
-	"github.com/matthewmueller/chunky/internal/lru"
 	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/repos"
+	"golang.org/x/sync/errgroup"
 )
 
 type Download struct {
@@ -54,69 +54,44 @@ func (c *Client) Download(ctx context.Context, in *Download) error {
 		return fmt.Errorf("cli: unable to load commit %q: %w", in.Revision, err)
 	}
 
-	cache := lru.New(in.MaxCacheSize)
+	pr := packs.NewReader(in.From, in.MaxCacheSize)
+
+	eg, ictx := errgroup.WithContext(ctx)
 	for _, file := range commit.Files() {
-		if err := c.downloadFile(ctx, in, cache, file); err != nil {
-			return err
-		}
+		file := file
+		eg.Go(func() error {
+			return c.downloadFile(ictx, in, pr, file)
+		})
 	}
 
-	// packCache := lru.New(in.MaxCacheSize)
-
-	// for _, file := range commit.Files() {
-
-	// }
-	// fmt.Println(commit.Files())
-
-	// Download to the filesystem
-	// for _, commitPack := range commit.Packs() {
-	// 	pack, err := packs.Read(ctx, in.From, commitPack.ID)
-	// 	if err != nil {
-	// 		return fmt.Errorf("cli: unable to download pack %q: %w", commitPack.ID, err)
-	// 	}
-	// 	for _, file := range commitPack.Files {
-	// 		packFile, err := pack.Read(file.Path)
-	// 		if err != nil {
-	// 			return fmt.Errorf("cli: unable to read file %q: %w", file.Path, err)
-	// 		}
-	// 		if err := in.To.WriteFile(file.Path, packFile.Data, packFile.Mode); err != nil {
-	// 			if !errors.Is(err, os.ErrNotExist) {
-	// 				return fmt.Errorf("cli: unable to write file %q: %w", file.Path, err)
-	// 			}
-	// 			// Create the directory if it doesn't exist
-	// 			if err := in.To.MkdirAll(filepath.Dir(file.Path), 0755); err != nil {
-	// 				return fmt.Errorf("cli: unable to create directory %q: %w", file.Path, err)
-	// 			}
-	// 			// Retry writing the file
-	// 			if err := in.To.WriteFile(file.Path, packFile.Data, packFile.Mode); err != nil {
-	// 				return fmt.Errorf("cli: unable to write file %q: %w", file.Path, err)
-	// 			}
-	// 		}
-	// 	}
-	// }
+	// Wait for all the files to finish downloading
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("cli: unable to download files: %w", err)
+	}
 
 	return nil
 }
 
-func (c *Client) downloadFile(ctx context.Context, in *Download, cache *lru.Cache, cf *commits.File) (err error) {
-	// First load or download the pack
-	pack, ok := cache.Get(cf.PackId)
-	if !ok {
-		pack, err = packs.Read(ctx, in.From, cf.PackId)
-		if err != nil {
-			return fmt.Errorf("cli: unable to download pack %q: %w", cf.PackId, err)
-		}
-		cache.Add(cf.PackId, pack)
+func (c *Client) downloadFile(ctx context.Context, in *Download, pr *packs.Reader, cf *commits.File) (err error) {
+	// Load the pack that contains the file chunk
+	pack, err := pr.Read(ctx, cf.PackId)
+	if err != nil {
+		return fmt.Errorf("cli: unable to download pack %q: %w", cf.PackId, err)
 	}
+	// pack, ok := cache.Get(cf.PackId)
+	// if !ok {
+	// 	pack, err = packs.Read(ctx, in.From, cf.PackId)
+	// 	if err != nil {
+	// 		return fmt.Errorf("cli: unable to download pack %q: %w", cf.PackId, err)
+	// 	}
+	// 	cache.Add(cf.PackId, pack)
+	// }
 
 	// Find the file chunk within the pack
 	fc := pack.Chunk(cf.Path)
 	if fc == nil {
 		return fmt.Errorf("cli: unable to find file %q in pack %q", cf.Path, cf.PackId)
 	}
-
-	fmt.Println("downloading", fc.Path)
-	return nil
 
 	// Create the file
 	file, err := in.To.OpenFile(fc.Path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fc.Mode)
@@ -135,7 +110,7 @@ func (c *Client) downloadFile(ctx context.Context, in *Download, cache *lru.Cach
 	defer file.Close()
 
 	// If we have the data upfront, write it to the file and return early
-	if fc.Data != nil {
+	if fc.Data != nil || fc.Size == 0 {
 		// Check the hash
 		if sha256.Hash(fc.Data) != fc.Hash {
 			return fmt.Errorf("cli: hash mismatch for file %q", fc.Path)
@@ -148,13 +123,9 @@ func (c *Client) downloadFile(ctx context.Context, in *Download, cache *lru.Cach
 
 	hash := sha256.New()
 	for _, ref := range fc.Refs {
-		pack, ok := cache.Get(ref.Pack)
-		if !ok {
-			pack, err = packs.Read(ctx, in.From, ref.Pack)
-			if err != nil {
-				return fmt.Errorf("cli: unable to download pack %q: %w", ref.Pack, err)
-			}
-			cache.Add(ref.Pack, pack)
+		pack, err := pr.Read(ctx, ref.Pack)
+		if err != nil {
+			return fmt.Errorf("cli: unable to download pack %q: %w", ref.Pack, err)
 		}
 		bc := pack.Chunk(ref.Hash)
 		if bc == nil {

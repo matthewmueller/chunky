@@ -1,13 +1,11 @@
-package lru
+package packs
 
 import (
 	"container/list"
 	"sync"
-
-	"github.com/matthewmueller/chunky/internal/packs"
 )
 
-type Cache struct {
+type lruCache struct {
 	maxBytes  int64
 	usedBytes int64
 	ll        *list.List
@@ -17,18 +15,18 @@ type Cache struct {
 
 type entry struct {
 	key   string
-	value *packs.Pack
+	value *Pack
 }
 
-func New(maxBytes int64) *Cache {
-	return &Cache{
+func newCache(maxBytes int64) *lruCache {
+	return &lruCache{
 		maxBytes: maxBytes,
 		ll:       list.New(),
 		cache:    make(map[string]*list.Element),
 	}
 }
 
-func (c *Cache) Get(key string) (*packs.Pack, bool) {
+func (c *lruCache) Get(key string) (*Pack, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -40,7 +38,7 @@ func (c *Cache) Get(key string) (*packs.Pack, bool) {
 	return nil, false
 }
 
-func (c *Cache) Add(key string, value *packs.Pack) {
+func (c *lruCache) Set(key string, value *Pack) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -60,7 +58,7 @@ func (c *Cache) Add(key string, value *packs.Pack) {
 	}
 }
 
-func (c *Cache) removeOldest() {
+func (c *lruCache) removeOldest() {
 	ele := c.ll.Back()
 	if ele != nil {
 		c.ll.Remove(ele)
@@ -70,7 +68,7 @@ func (c *Cache) removeOldest() {
 	}
 }
 
-func (c *Cache) Len() int {
+func (c *lruCache) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.ll.Len()

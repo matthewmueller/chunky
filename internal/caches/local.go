@@ -3,7 +3,6 @@ package caches
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -90,11 +89,6 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 		seen[commitId] = false
 	}
 
-	fmt.Println("cache contains", len(c.files), "files")
-	for key := range c.files {
-		fmt.Println("cache contains", key)
-	}
-
 	if err := repo.Walk(ctx, "commits", func(fpath string, de fs.DirEntry, err error) error {
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
@@ -158,15 +152,10 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 		delete(c.commits, commitId)
 	}
 
-	for key := range c.files {
-		fmt.Println("cache contains", key)
-	}
-
 	return nil
 }
 
 func (c *Local) Get(path, hash string) (file *commits.File, ok bool) {
-	fmt.Println("GET", cacheKey(path, hash))
 	file, ok = c.files[cacheKey(path, hash)]
 	return file, ok
 }
@@ -184,14 +173,12 @@ func (c *Local) Set(commitId string, commit *commits.Commit) error {
 	}
 
 	// Write the commit to the cache
-	fmt.Println("SET", commitId)
 	if err := c.fsys.WriteFile(commitId, data, 0644); err != nil {
 		return err
 	}
 
 	// Add the files to the cache
 	for _, file := range commit.Files() {
-		fmt.Println("SET", cacheKey(file.Path, file.Id))
 		c.files[cacheKey(file.Path, file.Id)] = file
 	}
 	c.commits[commitId] = commit
