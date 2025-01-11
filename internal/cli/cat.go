@@ -28,7 +28,7 @@ func (c *CLI) Cat(ctx context.Context, in *Cat) error {
 	if err != nil {
 		return err
 	}
-	pr := packs.NewReader(lru.New[*packs.Pack](0))
+	pr := packs.NewReader(lru.New[*packs.Pack](512 * mib))
 	download := downloads.New(pr)
 	return download.Cat(ctx, c.Stdout, repo, in.Revision, in.Path)
 }

@@ -27,6 +27,9 @@ import (
 	"github.com/matthewmueller/virt"
 )
 
+const kib = 1024
+const mib = 1024 * kib
+
 func Run() int {
 	log := logs.Default()
 	cli := &CLI{
