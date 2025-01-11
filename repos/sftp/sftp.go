@@ -92,7 +92,18 @@ func (c *Repo) Upload(ctx context.Context, fromCh <-chan *repos.File) error {
 }
 
 func (c *Repo) uploadFile(file *repos.File, remotePath string) error {
-	return writeFile(c.sftp, remotePath, file.Data, file.Mode)
+	if err := writeFile(c.sftp, remotePath, file.Data, file.Mode); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("sftp: unable to write file %q: %w", remotePath, err)
+		}
+		if err := mkdirAll(c.sftp, filepath.Dir(remotePath), 0755); err != nil {
+			return fmt.Errorf("sftp: unable to create directory %q: %w", remotePath, err)
+		}
+		if err := writeFile(c.sftp, remotePath, file.Data, file.Mode); err != nil {
+			return fmt.Errorf("sftp: unable to write file %q: %w", remotePath, err)
+		}
+	}
+	return nil
 }
 
 // TODO: this implementation conceptually differs from the local repo implementation

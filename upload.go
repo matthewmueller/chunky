@@ -28,7 +28,6 @@ type Upload struct {
 	User         string
 	Tags         []string
 	Ignore       func(path string) bool
-	ReadFile     func(path string) ([]byte, error)
 	MaxPackSize  int64
 	MinChunkSize int64
 	MaxChunkSize int64
@@ -67,13 +66,6 @@ func (in *Upload) validate() (err error) {
 	// Default to the .chunkyignore file
 	if in.Ignore == nil {
 		in.Ignore = chunkyignore.FromFS(in.From)
-	}
-
-	// Default to reading files from the 'from' filesystem
-	if in.ReadFile == nil {
-		in.ReadFile = func(path string) ([]byte, error) {
-			return fs.ReadFile(in.From, path)
-		}
 	}
 
 	if in.MaxPackSize < 0 {
