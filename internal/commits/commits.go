@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
-	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/chunky/internal/timeid"
 	"github.com/matthewmueller/chunky/repos"
 )
@@ -244,14 +243,14 @@ func FindFile(commit *Commit, path string) (*File, error) {
 	return file, nil
 }
 
-func ReadFile(ctx context.Context, repo repos.Repo, file *File) (*repos.File, error) {
-	packFile, err := repos.Download(ctx, repo, path.Join("packs", file.PackId))
-	if err != nil {
-		return nil, fmt.Errorf("commits: unable to download pack %q: %w", file.PackId, err)
-	}
-	pack, err := packs.Unpack(packFile.Data)
-	if err != nil {
-		return nil, fmt.Errorf("commits: unable to unpack pack %q: %w", file.PackId, err)
-	}
-	return pack.Read(file.Path)
-}
+// func ReadFile(ctx context.Context, repo repos.Repo, file *File) (*repos.File, error) {
+// 	packFile, err := repos.Download(ctx, repo, path.Join("packs", file.PackId))
+// 	if err != nil {
+// 		return nil, fmt.Errorf("commits: unable to download pack %q: %w", file.PackId, err)
+// 	}
+// 	pack, err := packs.Unpack(packFile.Data)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("commits: unable to unpack pack %q: %w", file.PackId, err)
+// 	}
+// 	return pack.Read(file.Path)
+// }

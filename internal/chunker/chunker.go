@@ -7,10 +7,12 @@ import (
 )
 
 var pol = chunker.Pol(0x3DA3358B4DC173)
+var MinSize uint = chunker.MinSize
+var MaxSize uint = chunker.MaxSize
 
-func New(r io.Reader) Chunker {
+func New(r io.Reader, minSize, maxSize uint) Chunker {
 	return &defaultChunker{
-		chunker.New(r, pol),
+		chunker.New(r, pol, chunker.WithBoundaries(minSize, maxSize)),
 	}
 }
 

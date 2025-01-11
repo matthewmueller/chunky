@@ -8,6 +8,7 @@ import (
 	"path"
 
 	"github.com/matthewmueller/chunky/repos"
+	"github.com/matthewmueller/virt"
 	"github.com/pkg/sftp"
 )
 
@@ -18,6 +19,18 @@ var _ repos.FS = (*Repo)(nil)
 func (r *Repo) Open(name string) (fs.File, error) {
 	return r.sftp.Open(path.Join(r.dir, name))
 }
+
+func (r *Repo) OpenFile(name string, flag int, perm fs.FileMode) (virt.RWFile, error) {
+	file, err := r.sftp.OpenFile(path.Join(r.dir, name), flag)
+	if err != nil {
+		return nil, fmt.Errorf("sftp: unable to open file %q: %w", name, err)
+	}
+	if err := file.Chmod(perm); err != nil {
+		return nil, fmt.Errorf("sftp: unable to chmod file %q: %w", name, err)
+	}
+	return file, nil
+}
+
 func (r *Repo) Stat(name string) (fs.FileInfo, error) {
 	return r.sftp.Stat(path.Join(r.dir, name))
 }

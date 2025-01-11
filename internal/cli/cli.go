@@ -99,12 +99,25 @@ func (c *CLI) loadFS(path string) (repos.FS, error) {
 	}
 }
 
-func (c *CLI) cacheDir(repoUrl *url.URL) (string, error) {
+func cacheDir() (string, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", fmt.Errorf("cli: getting user cache dir: %w", err)
 	}
-	dir := filepath.Join(cacheDir, "chunky", text.Slug(repoUrl.String()))
+	dir := filepath.Join(cacheDir, "chunky")
+	return dir, nil
+}
+
+func cacheName(repoUrl *url.URL) string {
+	return text.Slug(repoUrl.String())
+}
+
+func (c *CLI) cacheDir(repoUrl *url.URL) (string, error) {
+	cacheDir, err := cacheDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(cacheDir, cacheName(repoUrl))
 	return dir, nil
 }
 
@@ -280,11 +293,19 @@ func (c *CLI) Parse(ctx context.Context, args ...string) error {
 		})
 	}
 
-	{ // clean <repo>
-		in := &Clean{}
+	{ // cache prune <repo>
+		in := &CachePrune{}
 		cmd := in.command(cli)
 		cmd.Run(func(ctx context.Context) error {
-			return c.Clean(ctx, in)
+			return c.CachePrune(ctx, in)
+		})
+	}
+
+	{ // cache size [repo]
+		in := &CacheSize{}
+		cmd := in.command(cli)
+		cmd.Run(func(ctx context.Context) error {
+			return c.CacheSize(ctx, in)
 		})
 	}
 

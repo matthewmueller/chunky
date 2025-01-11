@@ -8,17 +8,17 @@ import (
 	"github.com/matthewmueller/chunky/repos"
 )
 
-type Clean struct {
+type CachePrune struct {
 	Repo string
 }
 
-func (c *Clean) command(cli cli.Command) cli.Command {
-	cmd := cli.Command("clean", "clean a repository and local cache").Advanced()
+func (c *CachePrune) command(cli cli.Command) cli.Command {
+	cmd := cli.Command("cache-prune", "prune a repository and local cache").Advanced()
 	cmd.Arg("repo", "repo path").String(&c.Repo)
 	return cmd
 }
 
-func (c *CLI) Clean(ctx context.Context, in *Clean) error {
+func (c *CLI) CachePrune(ctx context.Context, in *CachePrune) error {
 	repoUrl, err := repos.Parse(in.Repo)
 	if err != nil {
 		return err

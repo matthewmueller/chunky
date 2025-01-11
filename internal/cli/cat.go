@@ -38,11 +38,13 @@ func (c *CLI) Cat(ctx context.Context, in *Cat) error {
 		return fmt.Errorf("cli: unable to find %s in commit: %w", in.Path, err)
 	}
 
-	vfile, err := commits.ReadFile(ctx, repo, commitFile)
-	if err != nil {
-		return err
-	}
+	_ = commitFile
 
-	fmt.Fprintln(c.Stdout, string(vfile.Data))
+	// vfile, err := commits.ReadFile(ctx, repo, commitFile)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// fmt.Fprintln(c.Stdout, string(vfile.Data))
 	return nil
 }
