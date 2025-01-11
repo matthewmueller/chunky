@@ -16,17 +16,18 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func New(pr packs.Reader) *Download {
-	return &Download{
+func New(pr packs.Reader) *Downloader {
+	return &Downloader{
 		pr: pr,
 	}
 }
 
-type Download struct {
+type Downloader struct {
 	pr packs.Reader
 }
 
-func (d *Download) Repo(ctx context.Context, from repos.Repo, revision string, to repos.FS) error {
+// Download a revision from a repo to a filesystem
+func (d *Downloader) Download(ctx context.Context, from repos.Repo, revision string, to repos.FS) error {
 	commit, err := commits.Read(ctx, from, revision)
 	if err != nil {
 		return fmt.Errorf("downloads: unable to load commit %q: %w", revision, err)
@@ -44,7 +45,7 @@ func (d *Download) Repo(ctx context.Context, from repos.Repo, revision string, t
 	return nil
 }
 
-func (d *Download) downloadFile(ctx context.Context, from repos.Repo, to repos.FS, cf *commits.File) error {
+func (d *Downloader) downloadFile(ctx context.Context, from repos.Repo, to repos.FS, cf *commits.File) error {
 	// Load the pack that contains the file chunk
 	pack, err := d.pr.Read(ctx, from, cf.PackId)
 	if err != nil {
@@ -112,7 +113,8 @@ func (d *Download) downloadFile(ctx context.Context, from repos.Repo, to repos.F
 	return nil
 }
 
-func (d *Download) StreamFile(ctx context.Context, w io.Writer, repo repos.Repo, revision, path string) error {
+// Cat file data from a repo to a writer
+func (d *Downloader) Cat(ctx context.Context, w io.Writer, repo repos.Repo, revision, path string) error {
 	// Download the commit
 	commit, err := commits.Read(ctx, repo, revision)
 	if err != nil {

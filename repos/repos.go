@@ -15,19 +15,6 @@ type Tree = virt.Tree
 type File = virt.File
 type FS = virt.FS
 
-// type VFile interface {
-// 	fs.File
-// 	Write([]byte) (int, error)
-// 	Close() error
-// }
-
-// type FS interface {
-// 	Open(name string) (VFile, error)
-// 	ReadDir(name string) ([]fs.DirEntry, error)
-// 	Mkdir(name string, perm fs.FileMode) error
-// 	OpenFile(name string, flag int, perm fs.FileMode) (VFile, error)
-// }
-
 // Parse parses a repository path and returns a URL.
 func Parse(repoPath string) (*url.URL, error) {
 	// Handle SSH-like paths

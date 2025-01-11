@@ -30,5 +30,5 @@ func (c *CLI) Cat(ctx context.Context, in *Cat) error {
 	}
 	pr := packs.NewReader(lru.New[*packs.Pack](0))
 	download := downloads.New(pr)
-	return download.StreamFile(ctx, c.Stdout, repo, in.Revision, in.Path)
+	return download.Cat(ctx, c.Stdout, repo, in.Revision, in.Path)
 }
