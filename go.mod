@@ -11,7 +11,7 @@ require (
 	github.com/matthewmueller/prompter v0.0.2
 	github.com/matthewmueller/sshx v0.0.5
 	github.com/matthewmueller/text v0.0.0-20210424201111-ec1e4af8dfe8
-	github.com/matthewmueller/virt v0.0.11
+	github.com/matthewmueller/virt v0.0.12
 	github.com/pkg/sftp v1.13.7
 	github.com/restic/chunker v0.4.1-0.20231001122857-ac4c622f4b08
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06

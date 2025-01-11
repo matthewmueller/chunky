@@ -104,17 +104,8 @@ type File struct {
 	PackId string `json:"pack_id,omitempty"`
 }
 
-func findFile(commit *Commit, path string) *File {
-	for _, file := range commit.files {
-		if file.Path == path {
-			return file
-		}
-	}
-	return nil
-}
-
 func (c *Commit) Add(file *File) {
-	if findFile(c, file.Path) != nil {
+	if _, ok := c.File(file.Path); ok {
 		return
 	}
 	c.files = append(c.files, file)
@@ -156,6 +147,15 @@ func (c *Commit) Pack() ([]byte, error) {
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func (c *Commit) File(path string) (*File, bool) {
+	for _, file := range c.files {
+		if file.Path == path {
+			return file, true
+		}
+	}
+	return nil, false
 }
 
 func Unpack(data []byte) (*Commit, error) {
@@ -234,23 +234,3 @@ func ReadAll(ctx context.Context, repo repos.Repo) (commits []*Commit, err error
 	})
 	return commits, nil
 }
-
-func FindFile(commit *Commit, path string) (*File, error) {
-	file := findFile(commit, path)
-	if file == nil {
-		return nil, fmt.Errorf("commits: %s %w", path, fs.ErrNotExist)
-	}
-	return file, nil
-}
-
-// func ReadFile(ctx context.Context, repo repos.Repo, file *File) (*repos.File, error) {
-// 	packFile, err := repos.Download(ctx, repo, path.Join("packs", file.PackId))
-// 	if err != nil {
-// 		return nil, fmt.Errorf("commits: unable to download pack %q: %w", file.PackId, err)
-// 	}
-// 	pack, err := packs.Unpack(packFile.Data)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("commits: unable to unpack pack %q: %w", file.PackId, err)
-// 	}
-// 	return pack.Read(file.Path)
-// }

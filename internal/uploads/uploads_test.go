@@ -90,7 +90,8 @@ func TestOneFileNoChunks(t *testing.T) {
 	is.True(pack != nil)
 	is.Equal(len(pack.Chunks()), 1)
 
-	chunk := pack.Chunk("test.txt")
+	chunk, ok := pack.Chunk("test.txt")
+	is.True(ok)
 	is.True(chunk != nil)
 	is.Equal(chunk.Path, "test.txt")
 	is.Equal(chunk.Mode, fs.FileMode(0644))
@@ -144,7 +145,8 @@ func TestOneFileOneChunk(t *testing.T) {
 	is.True(pack != nil)
 	is.Equal(len(pack.Chunks()), 2)
 
-	chunk := pack.Chunk("test.txt")
+	chunk, ok := pack.Chunk("test.txt")
+	is.True(ok)
 	is.True(chunk != nil)
 	is.Equal(chunk.Path, "test.txt")
 	is.Equal(chunk.Mode, fs.FileMode(0644))
@@ -201,7 +203,8 @@ func TestOneFileTwoChunks(t *testing.T) {
 	is.True(pack != nil)
 	is.Equal(len(pack.Chunks()), 3)
 	// First file chunk
-	fchunk := pack.Chunk("test.txt")
+	fchunk, ok := pack.Chunk("test.txt")
+	is.True(ok)
 	is.True(fchunk != nil)
 	is.Equal(fchunk.Path, "test.txt")
 	is.Equal(fchunk.Mode, fs.FileMode(0644))
@@ -215,10 +218,12 @@ func TestOneFileTwoChunks(t *testing.T) {
 	is.True(fchunk.Refs[1].Hash != "")
 	is.Equal(fchunk.Refs[1].Pack, packId)
 	// Second blob chunk
-	bchunk := pack.Chunk(fchunk.Refs[0].Hash)
+	bchunk, ok := pack.Chunk(fchunk.Refs[0].Hash)
+	is.True(ok)
 	is.True(bchunk != nil)
 	// Third blob chunk
-	bchunk = pack.Chunk(fchunk.Refs[1].Hash)
+	bchunk, ok = pack.Chunk(fchunk.Refs[1].Hash)
+	is.True(ok)
 	is.True(bchunk != nil)
 }
 
@@ -292,7 +297,8 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 
 	is.Equal(len(firstPack.Chunks()), 4)
 	// First chunk
-	chunk := firstPack.Chunk("one.txt")
+	chunk, ok := firstPack.Chunk("one.txt")
+	is.True(ok)
 	is.True(chunk != nil)
 	is.Equal(chunk.Path, "one.txt")
 	is.Equal(chunk.Mode, fs.FileMode(0644))
@@ -304,11 +310,13 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	is.Equal(chunk.Refs[0].Pack, onePackId)
 	is.True(chunk.Refs[0].Hash != "")
 	// Second chunk
-	chunk = firstPack.Chunk(chunk.Refs[0].Hash)
+	chunk, ok = firstPack.Chunk(chunk.Refs[0].Hash)
+	is.True(ok)
 	is.True(chunk != nil)
 	is.Equal(chunk.Data, oneData)
 	// Third chunk
-	chunk = firstPack.Chunk("two.txt")
+	chunk, ok = firstPack.Chunk("two.txt")
+	is.True(ok)
 	is.True(chunk != nil)
 	is.Equal(chunk.Path, "two.txt")
 	is.Equal(chunk.Mode, fs.FileMode(0644))
@@ -318,7 +326,8 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	is.Equal(chunk.Data, nil)
 	is.Equal(len(chunk.Refs), 1)
 	// Fourth chunk
-	chunk = firstPack.Chunk(chunk.Refs[0].Hash)
+	chunk, ok = firstPack.Chunk(chunk.Refs[0].Hash)
+	is.True(ok)
 	is.True(chunk != nil)
 	is.Equal(chunk.Data, twoData)
 
@@ -345,7 +354,8 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 
 	is.Equal(len(secondPack.Chunks()), 3)
 	// First file chunk
-	fchunk := secondPack.Chunk("three.txt")
+	fchunk, ok := secondPack.Chunk("three.txt")
+	is.True(ok)
 	is.True(fchunk != nil)
 	is.Equal(fchunk.Path, "three.txt")
 	is.Equal(fchunk.Mode, fs.FileMode(0644))
@@ -354,10 +364,12 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	is.Equal(fchunk.Hash, sha256.Hash(threeData))
 	is.Equal(fchunk.Data, nil)
 	// Second blob chunk
-	bchunk := secondPack.Chunk(fchunk.Refs[0].Hash)
+	bchunk, ok := secondPack.Chunk(fchunk.Refs[0].Hash)
+	is.True(ok)
 	is.True(bchunk != nil)
 	// Third blob chunk
-	bchunk = secondPack.Chunk(fchunk.Refs[1].Hash)
+	bchunk, ok = secondPack.Chunk(fchunk.Refs[1].Hash)
+	is.True(ok)
 	is.True(bchunk != nil)
 }
 

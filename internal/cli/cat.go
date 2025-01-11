@@ -2,10 +2,11 @@ package cli
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/livebud/cli"
-	"github.com/matthewmueller/chunky/internal/commits"
+	"github.com/matthewmueller/chunky/internal/downloads"
+	"github.com/matthewmueller/chunky/internal/lru"
+	"github.com/matthewmueller/chunky/internal/packs"
 )
 
 type Cat struct {
@@ -27,24 +28,7 @@ func (c *CLI) Cat(ctx context.Context, in *Cat) error {
 	if err != nil {
 		return err
 	}
-
-	commit, err := commits.Read(ctx, repo, in.Revision)
-	if err != nil {
-		return err
-	}
-
-	commitFile, err := commits.FindFile(commit, in.Path)
-	if err != nil {
-		return fmt.Errorf("cli: unable to find %s in commit: %w", in.Path, err)
-	}
-
-	_ = commitFile
-
-	// vfile, err := commits.ReadFile(ctx, repo, commitFile)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// fmt.Fprintln(c.Stdout, string(vfile.Data))
-	return nil
+	pr := packs.NewReader(lru.New[*packs.Pack](0))
+	download := downloads.New(pr)
+	return download.StreamFile(ctx, c.Stdout, repo, in.Revision, in.Path)
 }

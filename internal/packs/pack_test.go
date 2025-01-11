@@ -35,7 +35,8 @@ func TestPackUnpackFileWithData(t *testing.T) {
 
 	is.Equal(len(pack.Chunks()), 1)
 
-	chunk := pack.Chunk("small.txt")
+	chunk, ok := pack.Chunk("small.txt")
+	is.True(ok)
 	is.True(chunk != nil)
 	is.Equal(chunk.Path, "small.txt")
 	is.Equal(chunk.Hash, hash(data))
@@ -94,14 +95,15 @@ func TestPackUnpackMultiple(t *testing.T) {
 
 	is.Equal(len(pack.Chunks()), 2)
 
-	chunk := pack.Chunk("favicon.ico")
-	is.NoErr(err)
+	chunk, ok := pack.Chunk("favicon.ico")
+	is.True(ok)
 	is.True(chunk != nil)
 	is.Equal(chunk.Path, "favicon.ico")
 	is.Equal(chunk.Data, faviconData)
 	is.Equal(chunk.Kind(), "file")
 
-	chunk = pack.Chunk("small.gif")
+	chunk, ok = pack.Chunk("small.gif")
+	is.True(ok)
 	is.NoErr(err)
 	is.True(chunk != nil)
 	is.Equal(chunk.Path, "small.gif")
@@ -169,8 +171,8 @@ func TestPackUnpackWithRefs(t *testing.T) {
 
 	is.Equal(len(pack.Chunks()), 5)
 
-	chunk := pack.Chunk("favicon.ico")
-	is.NoErr(err)
+	chunk, ok := pack.Chunk("favicon.ico")
+	is.True(ok)
 	is.True(chunk != nil)
 	is.Equal(chunk.Path, "favicon.ico")
 	is.Equal(chunk.Data, nil)

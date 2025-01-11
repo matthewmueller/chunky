@@ -125,13 +125,13 @@ func (p *Pack) Pack() ([]byte, error) {
 	return data.Bytes(), nil
 }
 
-func (p *Pack) Chunk(key string) *Chunk {
+func (p *Pack) Chunk(key string) (*Chunk, bool) {
 	for _, chunk := range p.chunks {
 		if chunk.Key() == key {
-			return chunk
+			return chunk, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func (p *Pack) Chunks() []*Chunk {

@@ -4,8 +4,13 @@ import (
 	"context"
 	"path"
 
+	"github.com/matthewmueller/chunky/internal/lru"
 	"github.com/matthewmueller/chunky/repos"
 )
+
+type Reader interface {
+	Read(ctx context.Context, repo repos.Repo, packId string) (*Pack, error)
+}
 
 func Read(ctx context.Context, repo repos.Repo, packId string) (*Pack, error) {
 	packFile, err := repos.Download(ctx, repo, path.Join("packs", packId))
@@ -15,20 +20,20 @@ func Read(ctx context.Context, repo repos.Repo, packId string) (*Pack, error) {
 	return Unpack(packFile.Data)
 }
 
-func NewReader(repo repos.Repo, maxBytes int64) *Reader {
-	return &Reader{repo, newCache(maxBytes)}
+// NewReader creates a new cached reader
+func NewReader(cache lru.Cache[*Pack]) Reader {
+	return &cachedReader{cache}
 }
 
-type Reader struct {
-	repo  repos.Repo
-	cache *lruCache
+type cachedReader struct {
+	cache lru.Cache[*Pack]
 }
 
-func (r *Reader) Read(ctx context.Context, packId string) (*Pack, error) {
+func (r *cachedReader) Read(ctx context.Context, repo repos.Repo, packId string) (*Pack, error) {
 	if pack, ok := r.cache.Get(packId); ok {
 		return pack, nil
 	}
-	pack, err := Read(ctx, r.repo, packId)
+	pack, err := Read(ctx, repo, packId)
 	if err != nil {
 		return nil, err
 	}

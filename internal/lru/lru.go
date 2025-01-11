@@ -1,11 +1,20 @@
-package packs
+package lru
 
 import (
 	"container/list"
 	"sync"
 )
 
-type lruCache struct {
+type Cache[I Item] interface {
+	Get(key string) (I, bool)
+	Set(key string, value I)
+}
+
+type Item interface {
+	Length() int64
+}
+
+type cache[I Item] struct {
 	maxBytes  int64
 	usedBytes int64
 	ll        *list.List
@@ -13,42 +22,43 @@ type lruCache struct {
 	mu        sync.Mutex
 }
 
-type entry struct {
+type entry[I Item] struct {
 	key   string
-	value *Pack
+	value I
 }
 
-func newCache(maxBytes int64) *lruCache {
-	return &lruCache{
+func New[I Item](maxBytes int64) *cache[I] {
+	return &cache[I]{
 		maxBytes: maxBytes,
 		ll:       list.New(),
 		cache:    make(map[string]*list.Element),
 	}
 }
 
-func (c *lruCache) Get(key string) (*Pack, bool) {
+func (c *cache[I]) Get(key string) (I, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if ele, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ele)
-		kv := ele.Value.(*entry)
+		kv := ele.Value.(*entry[I])
 		return kv.value, true
 	}
-	return nil, false
+	var zero I
+	return zero, false
 }
 
-func (c *lruCache) Set(key string, value *Pack) {
+func (c *cache[I]) Set(key string, value I) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if ele, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ele)
-		kv := ele.Value.(*entry)
+		kv := ele.Value.(*entry[I])
 		c.usedBytes += value.Length() - kv.value.Length()
 		kv.value = value
 	} else {
-		ele := c.ll.PushFront(&entry{key, value})
+		ele := c.ll.PushFront(&entry[I]{key, value})
 		c.cache[key] = ele
 		c.usedBytes += int64(len(key)) + value.Length()
 	}
@@ -58,17 +68,17 @@ func (c *lruCache) Set(key string, value *Pack) {
 	}
 }
 
-func (c *lruCache) removeOldest() {
+func (c *cache[I]) removeOldest() {
 	ele := c.ll.Back()
 	if ele != nil {
 		c.ll.Remove(ele)
-		kv := ele.Value.(*entry)
+		kv := ele.Value.(*entry[I])
 		delete(c.cache, kv.key)
 		c.usedBytes -= int64(len(kv.key)) + kv.value.Length()
 	}
 }
 
-func (c *lruCache) Len() int {
+func (c *cache[I]) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.ll.Len()
