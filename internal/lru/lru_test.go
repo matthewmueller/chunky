@@ -6,11 +6,13 @@ import (
 	"github.com/matryer/is"
 	"github.com/matthewmueller/chunky/internal/lru"
 	"github.com/matthewmueller/chunky/internal/packs"
+	"github.com/matthewmueller/logs"
 )
 
 func TestCacheAddGet(t *testing.T) {
 	is := is.New(t)
-	cache := lru.New[*packs.Pack](1024)
+	log := logs.Discard()
+	cache := lru.New[*packs.Pack](log, 1024)
 
 	pack := packs.New()
 	pack.Add(&packs.Chunk{Path: "test.txt", Data: []byte("test data")})
@@ -23,7 +25,8 @@ func TestCacheAddGet(t *testing.T) {
 
 func TestCacheEviction(t *testing.T) {
 	is := is.New(t)
-	cache := lru.New[*packs.Pack](64)
+	log := logs.Discard()
+	cache := lru.New[*packs.Pack](log, 64)
 
 	pack1 := packs.New()
 	pack1.Add(&packs.Chunk{Path: "test1.txt", Data: []byte("test data 1")})
@@ -42,7 +45,8 @@ func TestCacheEviction(t *testing.T) {
 
 func TestCacheUpdate(t *testing.T) {
 	is := is.New(t)
-	cache := lru.New[*packs.Pack](1024)
+	log := logs.Discard()
+	cache := lru.New[*packs.Pack](log, 1024)
 
 	pack1 := packs.New()
 	pack1.Add(&packs.Chunk{Path: "test.txt", Data: []byte("test data 1")})
@@ -59,7 +63,8 @@ func TestCacheUpdate(t *testing.T) {
 
 func TestCacheLen(t *testing.T) {
 	is := is.New(t)
-	cache := lru.New[*packs.Pack](1024)
+	log := logs.Discard()
+	cache := lru.New[*packs.Pack](log, 1024)
 
 	is.Equal(cache.Len(), 0)
 

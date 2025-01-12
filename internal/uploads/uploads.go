@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"path"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/matthewmueller/chunky/internal/rate"
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/repos"
+	"github.com/matthewmueller/logs"
 	"github.com/matthewmueller/virt"
 	"github.com/segmentio/ksuid"
 )
@@ -20,8 +22,9 @@ import (
 const kiB = 1024
 const miB = 1024 * kiB
 
-func New(uploadCh chan<- *repos.File) *Upload {
+func New(log *slog.Logger, uploadCh chan<- *repos.File) *Upload {
 	return &Upload{
+		log:      log,
 		uploadCh: uploadCh,
 
 		MaxPackSize:  32 * miB,
@@ -36,11 +39,13 @@ func New(uploadCh chan<- *repos.File) *Upload {
 }
 
 type Upload struct {
+	log          *slog.Logger
 	uploadCh     chan<- *repos.File
 	MaxPackSize  int
 	MinChunkSize int
 	MaxChunkSize int
 	Limiter      rate.Limiter
+	Concurrency  int
 
 	// Current pack
 	current *packFile
@@ -155,14 +160,31 @@ func (u *Upload) Flush(ctx context.Context) error {
 	if u.current.Length() == 0 {
 		return nil
 	}
+
+	log := logs.Scope(u.log)
+
 	packFile, err := u.current.File()
 	if err != nil {
 		return err
 	}
+
+	now := time.Now()
 	if err := u.Limiter.Use(ctx, len(packFile.Data)); err != nil {
 		return err
 	}
-	u.uploadCh <- packFile
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case u.uploadCh <- packFile:
+	}
+
+	log.Debug("uploaded pack",
+		slog.String("path", packFile.Path),
+		slog.Int("size", len(packFile.Data)),
+		slog.Duration("time", time.Since(now)),
+	)
+
 	u.current = newPackFile()
 	return nil
 }

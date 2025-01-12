@@ -12,6 +12,7 @@ type Download struct {
 	To            string
 	Revision      string
 	LimitDownload string
+	Concurrency   *int
 }
 
 func (d *Download) command(cli cli.Command) cli.Command {
@@ -20,6 +21,7 @@ func (d *Download) command(cli cli.Command) cli.Command {
 	cmd.Arg("to", "directory to download to").String(&d.To)
 	cmd.Flag("revision", "revision to download").String(&d.Revision).Default("latest")
 	cmd.Flag("limit-download", "limit bytes per second").String(&d.LimitDownload).Default("")
+	cmd.Flag("concurrency", "number of concurrent downloads").Optional().Int(&d.Concurrency)
 	return cmd
 }
 
@@ -37,10 +39,11 @@ func (c *CLI) Download(ctx context.Context, in *Download) error {
 	}
 
 	// Download the directory
-	return c.Chunky.Download(ctx, &chunky.Download{
+	return c.chunky.Download(ctx, &chunky.Download{
 		From:          repo,
 		To:            to,
 		Revision:      in.Revision,
 		LimitDownload: in.LimitDownload,
+		Concurrency:   in.Concurrency,
 	})
 }

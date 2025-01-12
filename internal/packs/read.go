@@ -3,12 +3,15 @@ package packs
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path"
+	"time"
 
 	"github.com/matthewmueller/chunky/internal/lru"
 	"github.com/matthewmueller/chunky/internal/rate"
 	"github.com/matthewmueller/chunky/internal/singleflight"
 	"github.com/matthewmueller/chunky/repos"
+	"github.com/matthewmueller/logs"
 )
 
 type Reader interface {
@@ -24,22 +27,28 @@ func Read(ctx context.Context, repo repos.Repo, packId string) (*Pack, error) {
 }
 
 // NewCachedReader creates a new cached reader
-func NewCachedReader(cache lru.Cache[*Pack]) *CachedReader {
+func NewCachedReader(log *slog.Logger, cache lru.Cache[*Pack]) *CachedReader {
 	return &CachedReader{
 		Limiter: rate.New(0),
+		log:     log,
 		cache:   cache,
 	}
 }
 
 type CachedReader struct {
 	Limiter rate.Limiter
-	cache   lru.Cache[*Pack]
-	group   singleflight.Group[string, *Pack]
+
+	log   *slog.Logger
+	cache lru.Cache[*Pack]
+	group singleflight.Group[string, *Pack]
 }
 
 var _ Reader = (*CachedReader)(nil)
 
 func (r *CachedReader) read(ctx context.Context, repo repos.Repo, packId string) (*Pack, error) {
+	log := logs.Scope(r.log)
+	now := time.Now()
+
 	packFile, err := repos.Download(ctx, repo, path.Join("packs", packId))
 	if err != nil {
 		return nil, fmt.Errorf("packs: unable to download pack %s: %w", packId, err)
@@ -47,6 +56,13 @@ func (r *CachedReader) read(ctx context.Context, repo repos.Repo, packId string)
 	if err := r.Limiter.Use(ctx, len(packFile.Data)); err != nil {
 		return nil, err
 	}
+
+	log.Debug("downloaded pack",
+		slog.String("path", packFile.Path),
+		slog.Int("size", len(packFile.Data)),
+		slog.Duration("time", time.Since(now)),
+	)
+
 	return Unpack(packFile.Data)
 }
 

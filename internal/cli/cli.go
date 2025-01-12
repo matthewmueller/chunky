@@ -31,19 +31,11 @@ const kib = 1024
 const mib = 1024 * kib
 
 func Run() int {
-	log := logs.Default()
-	cli := &CLI{
-		log,
-		chunky.New(log),
-		os.Stdout,
-		".",
-		prompter.Default(),
-		color.Default(),
-	}
+	cli := Default()
 	ctx := context.Background()
 	err := cli.Parse(ctx, os.Args[1:]...)
 	if err != nil {
-		log.ErrorContext(ctx, err.Error())
+		logs.ErrorContext(ctx, err.Error())
 		return 1
 	}
 	return 0
@@ -51,21 +43,28 @@ func Run() int {
 
 func Default() *CLI {
 	return &CLI{
-		Log:    logs.Default(),
-		Stdout: os.Stdout,
-		Dir:    ".",
-		Prompt: prompter.Default(),
-		Color:  color.Default(),
+		os.Stdout,
+		".",
+		prompter.Default(),
+		color.Default(),
+		"info",
+		nil,
+		nil,
 	}
 }
 
 type CLI struct {
-	Log    *slog.Logger
-	Chunky *chunky.Client
 	Stdout io.Writer
 	Dir    string
 	Prompt *prompter.Prompt
 	Color  color.Writer
+
+	// global flag
+	logLevel string
+
+	// Set after parsing
+	log    *slog.Logger
+	chunky *chunky.Client
 }
 
 func (c *CLI) loadRepo(path string) (repos.Repo, error) {
@@ -204,112 +203,133 @@ func formatTag(writer io.Writer, color color.Writer, tag *tags.Tag, newest *comm
 	writer.Write(b.Bytes())
 }
 
+func (c *CLI) logger(logLevel string) (*slog.Logger, error) {
+	level, err := logs.ParseLevel(logLevel)
+	if err != nil {
+		return nil, fmt.Errorf("cli: parsing log level: %w", err)
+	}
+	log := logs.New(logs.Filter(level, logs.Console(c.Stdout)))
+	return log, nil
+}
+
+func (c *CLI) wrap(fn func(ctx context.Context) error) func(ctx context.Context) error {
+	return func(ctx context.Context) (err error) {
+		c.log, err = c.logger(c.logLevel)
+		if err != nil {
+			return err
+		}
+		c.chunky = chunky.New(c.log)
+		return fn(ctx)
+	}
+}
+
 func (c *CLI) Parse(ctx context.Context, args ...string) error {
 	cli := cli.New("chunky", "efficiently store versioned data")
+	cli.Flag("log", "log configures the log level").Enum(&c.logLevel, "debug", "info", "warn", "error").Default("info")
 
 	{ // create <repo>
 		in := &Create{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.Create(ctx, in)
-		})
+		}))
 	}
 
 	{ // upload [--tag=<tag>] <from> <to>
 		in := &Upload{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.Upload(ctx, in)
-		})
+		}))
 
 	}
 
 	{ // download <from> <to> <revision> [subpaths...]
 		in := &Download{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.Download(ctx, in)
-		})
+		}))
 	}
 
 	{ // versions <repo>
 		in := &List{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.List(ctx, in)
-		})
+		}))
 	}
 
 	{ // show <repo> <revision>
 		in := &Show{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.Show(ctx, in)
-		})
+		}))
 	}
 
 	{ // cat <repo> <revision> <path>
 		in := &Cat{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.Cat(ctx, in)
-		})
+		}))
 	}
 
 	{ // cat-pack <repo> <pack>
 		in := &CatPack{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.CatPack(ctx, in)
-		})
+		}))
 	}
 
 	{ // cat-commit <repo> <commit>
 		in := &CatCommit{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.CatCommit(ctx, in)
-		})
+		}))
 	}
 
 	{ // cat-tag <repo> <tag>
 		in := &CatTag{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.CatTag(ctx, in)
-		})
+		}))
 	}
 
 	{ // tag <repo> <revision> <tag>
 		in := &Tag{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.Tag(ctx, in)
-		})
+		}))
 	}
 
 	{ // tags <repo>
 		in := &Tags{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.Tags(ctx, in)
-		})
+		}))
 	}
 
 	{ // cache prune <repo>
 		in := &CachePrune{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.CachePrune(ctx, in)
-		})
+		}))
 	}
 
 	{ // cache size [repo]
 		in := &CacheSize{}
 		cmd := in.command(cli)
-		cmd.Run(func(ctx context.Context) error {
+		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.CacheSize(ctx, in)
-		})
+		}))
 	}
 
 	return cli.Parse(ctx, args...)

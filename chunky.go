@@ -6,11 +6,17 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"runtime"
 
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/tags"
 	"github.com/matthewmueller/chunky/repos"
 )
+
+const kiB = 1024
+const miB = 1024 * kiB
+
+var defaultConcurrency = runtime.NumCPU() * 2
 
 func New(log *slog.Logger) *Client {
 	return &Client{log}

@@ -14,6 +14,7 @@ import (
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/internal/uploads"
 	"github.com/matthewmueller/chunky/repos"
+	"github.com/matthewmueller/logs"
 )
 
 const kib = 1024
@@ -39,7 +40,7 @@ func TestEmpty(t *testing.T) {
 	ctx := context.Background()
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 1)
-	upload := uploads.New(uploadCh)
+	upload := uploads.New(logs.Discard(), uploadCh)
 	upload.MaxPackSize = 8 * kib
 	upload.MinChunkSize = 1 * kib
 	upload.MaxChunkSize = 2 * kib
@@ -54,7 +55,7 @@ func TestOneFileNoChunks(t *testing.T) {
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 1)
 
-	upload := uploads.New(uploadCh)
+	upload := uploads.New(logs.Discard(), uploadCh)
 	upload.MaxPackSize = 8 * kib
 	upload.MinChunkSize = 1 * kib
 	upload.MaxChunkSize = 2 * kib
@@ -110,7 +111,7 @@ func TestOneFileOneChunk(t *testing.T) {
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 1)
 
-	upload := uploads.New(uploadCh)
+	upload := uploads.New(logs.Discard(), uploadCh)
 	upload.MaxPackSize = 8 * kib
 	upload.MinChunkSize = 512
 	upload.MaxChunkSize = 1 * kib
@@ -168,7 +169,7 @@ func TestOneFileTwoChunks(t *testing.T) {
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 1)
 
-	upload := uploads.New(uploadCh)
+	upload := uploads.New(logs.Discard(), uploadCh)
 	upload.MaxPackSize = 8 * kib
 	upload.MinChunkSize = 512
 	upload.MaxChunkSize = 1 * kib
@@ -237,7 +238,7 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 2)
 
-	upload := uploads.New(uploadCh)
+	upload := uploads.New(logs.Discard(), uploadCh)
 	upload.MaxPackSize = 3 * kib
 	upload.MinChunkSize = 512
 	upload.MaxChunkSize = 1 * kib
@@ -388,7 +389,7 @@ func TestBigFileThreePacks(t *testing.T) {
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 3)
 
-	upload := uploads.New(uploadCh)
+	upload := uploads.New(logs.Discard(), uploadCh)
 	upload.MaxPackSize = 4 * kib
 	upload.MinChunkSize = 512
 	upload.MaxChunkSize = 2 * kib

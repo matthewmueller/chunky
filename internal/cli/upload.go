@@ -14,6 +14,7 @@ type Upload struct {
 	Tags        []string
 	Cache       bool
 	LimitUpload string
+	Concurrency *int
 }
 
 func (u *Upload) command(cli cli.Command) cli.Command {
@@ -22,6 +23,7 @@ func (u *Upload) command(cli cli.Command) cli.Command {
 	cmd.Arg("repo", "repository to upload to").String(&u.To)
 	cmd.Flag("tags", "tag the revision").Short('t').Optional().Strings(&u.Tags)
 	cmd.Flag("limit-upload", "limit bytes per second").String(&u.LimitUpload).Default("")
+	cmd.Flag("concurrency", "number of concurrent uploads").Optional().Int(&u.Concurrency)
 	return cmd
 }
 
@@ -51,12 +53,13 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	return c.Chunky.Upload(ctx, &chunky.Upload{
+	return c.chunky.Upload(ctx, &chunky.Upload{
 		From:        fsys,
 		To:          repo,
 		Tags:        in.Tags,
 		User:        user,
 		Cache:       cache,
 		LimitUpload: in.LimitUpload,
+		Concurrency: in.Concurrency,
 	})
 }

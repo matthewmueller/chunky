@@ -2,7 +2,10 @@ package lru
 
 import (
 	"container/list"
+	"log/slog"
 	"sync"
+
+	"github.com/matthewmueller/logs"
 )
 
 type Cache[I Item] interface {
@@ -15,6 +18,7 @@ type Item interface {
 }
 
 type cache[I Item] struct {
+	log       *slog.Logger
 	maxBytes  int
 	usedBytes int
 	ll        *list.List
@@ -27,8 +31,9 @@ type entry[I Item] struct {
 	value I
 }
 
-func New[I Item](maxBytes int) *cache[I] {
+func New[I Item](log *slog.Logger, maxBytes int) *cache[I] {
 	return &cache[I]{
+		log:      log,
 		maxBytes: maxBytes,
 		ll:       list.New(),
 		cache:    make(map[string]*list.Element),
@@ -69,11 +74,13 @@ func (c *cache[I]) Set(key string, value I) {
 }
 
 func (c *cache[I]) removeOldest() {
+	log := logs.Scope(c.log)
 	ele := c.ll.Back()
 	if ele != nil {
 		c.ll.Remove(ele)
 		kv := ele.Value.(*entry[I])
 		delete(c.cache, kv.key)
+		log.Debug("lru dropped item", slog.String("key", kv.key))
 		c.usedBytes -= len(kv.key) + kv.value.Length()
 	}
 }

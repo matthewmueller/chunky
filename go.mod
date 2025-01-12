@@ -8,7 +8,7 @@ require (
 	github.com/livebud/cli v0.0.11
 	github.com/livebud/color v0.0.2
 	github.com/matryer/is v1.4.1
-	github.com/matthewmueller/logs v0.0.3
+	github.com/matthewmueller/logs v0.0.6
 	github.com/matthewmueller/prompter v0.0.2
 	github.com/matthewmueller/sshx v0.0.11
 	github.com/matthewmueller/text v0.0.0-20210424201111-ec1e4af8dfe8

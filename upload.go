@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os/user"
 	"path"
 	"time"
@@ -17,11 +18,9 @@ import (
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/internal/uploads"
 	"github.com/matthewmueller/chunky/repos"
+	"github.com/matthewmueller/logs"
 	"golang.org/x/sync/errgroup"
 )
-
-const kiB = 1024
-const miB = 1024 * kiB
 
 type Upload struct {
 	From   fs.FS
@@ -31,17 +30,25 @@ type Upload struct {
 	Tags   []string
 	Ignore func(path string) bool
 
+	// MaxPackSize is the maximum pack size (default: 32MiB)
 	MaxPackSize string
 	maxPackSize int
 
+	// MinChunkSize is the minimum chunk size (default: 512KiB)
 	MinChunkSize string
 	minChunkSize int
 
+	// MaxChunkSize is the maximum chunk size (default: 8MiB)
 	MaxChunkSize string
 	maxChunkSize int
 
+	// LimitUpload is the maximum upload rate (default: unlimited)
 	LimitUpload string
 	limitUpload int
+
+	// Concurrency is the number of files to upload concurrently (default: num cpus * 2)
+	Concurrency *int
+	concurrency int
 }
 
 func (in *Upload) validate() (err error) {
@@ -137,6 +144,17 @@ func (in *Upload) validate() (err error) {
 		err = errors.Join(err, errors.New("max pack size cannot be less than max chunk size"))
 	}
 
+	// Set the concurrency if provided
+	if in.Concurrency != nil {
+		in.concurrency = *in.Concurrency
+		// Uploads aren't setup for unlimited concurrency at the moment
+		if in.concurrency <= 0 {
+			err = errors.Join(err, errors.New("invalid concurrency"))
+		}
+	} else {
+		in.concurrency = defaultConcurrency
+	}
+
 	return err
 }
 
@@ -145,6 +163,8 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	if err := in.validate(); err != nil {
 		return err
 	}
+
+	log := logs.Scope(c.log)
 
 	// Download the latest commits from the cache
 	cache, err := caches.Download(ctx, in.To, in.Cache)
@@ -157,13 +177,16 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	commit := commits.New(in.User, createdAt)
 	commitId := commit.ID()
 
-	uploadCh := make(chan *repos.File)
+	uploadCh := make(chan *repos.File, in.concurrency)
+	// Start the upload workers
 	eg := new(errgroup.Group)
-	eg.Go(func() error {
-		return in.To.Upload(ctx, uploadCh)
-	})
+	for i := 0; i < in.concurrency; i++ {
+		eg.Go(func() error {
+			return in.To.Upload(ctx, uploadCh)
+		})
+	}
 
-	upload := uploads.New(uploadCh)
+	upload := uploads.New(log, uploadCh)
 	upload.MaxPackSize = in.maxPackSize
 	upload.MinChunkSize = in.minChunkSize
 	upload.MaxChunkSize = in.maxChunkSize
@@ -174,7 +197,10 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	if err := fs.WalkDir(in.From, ".", func(fpath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
-		} else if d.IsDir() || ignore(fpath) {
+		} else if d.IsDir() {
+			return nil
+		} else if ignore(fpath) {
+			log.Debug("ignoring file", slog.String("path", fpath))
 			return nil
 		}
 
@@ -190,6 +216,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		// commit. To fix this, we also ensure the file paths are the same.
 		// TODO: We should add a way to alias files in the pack to other packs.
 		if commitFile, ok := cache.Get(fpath, fileHash); ok {
+			log.Debug("file already in cache", slog.String("path", fpath))
 			commit.Add(commitFile)
 			return nil
 		}
@@ -219,6 +246,11 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		if err != nil {
 			return err
 		}
+
+		log.Debug("added file to pack",
+			slog.String("path", fpath),
+			slog.String("pack_id", packId),
+		)
 
 		// Add the file to the commit
 		commit.Add(&commits.File{

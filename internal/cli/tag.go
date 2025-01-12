@@ -28,7 +28,7 @@ func (c *CLI) Tag(ctx context.Context, in *Tag) error {
 		return err
 	}
 	// Tag the revision
-	return c.Chunky.TagRevision(ctx, &chunky.TagRevision{
+	return c.chunky.TagRevision(ctx, &chunky.TagRevision{
 		Repo:     repo,
 		Revision: in.Revision,
 		Tag:      in.Tag,
