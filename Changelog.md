@@ -1,3 +1,11 @@
+# 0.2.0 / 2025-01-11
+
+- add support for upload/download limits,
+- improve download throughput with singleflight
+- BREAKING: switch revision arg to flag and default to latest
+- support chunking large files into multiple packs
+- BREAKING: remove unnecessary readfile hook
+
 # 0.1.3 / 2024-12-31
 
 - ensure chunky works without cgo
