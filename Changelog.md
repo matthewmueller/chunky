@@ -1,3 +1,8 @@
+# 0.2.1 / 2025-01-12
+
+- add logging with log level flag
+- configurable concurrency limits
+
 # 0.2.0 / 2025-01-11
 
 - add support for upload/download limits,
