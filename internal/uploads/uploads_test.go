@@ -2,6 +2,7 @@ package uploads_test
 
 import (
 	"bytes"
+	"context"
 	"io/fs"
 	"path"
 	"strings"
@@ -35,31 +36,33 @@ func pullPackFile(uploadCh <-chan *repos.File) (*repos.File, bool) {
 }
 
 func TestEmpty(t *testing.T) {
+	ctx := context.Background()
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 1)
-	maxPackSize := int64(8 * kib)
-	minChunkSize := int64(1 * kib)
-	maxChunkSize := int64(2 * kib)
-	upload := uploads.New(uploadCh, maxPackSize, minChunkSize, maxChunkSize)
-	is.NoErr(upload.Flush())
+	upload := uploads.New(uploadCh)
+	upload.MaxPackSize = 8 * kib
+	upload.MinChunkSize = 1 * kib
+	upload.MaxChunkSize = 2 * kib
+	is.NoErr(upload.Flush(ctx))
 	file, ok := pullPackFile(uploadCh)
 	is.True(!ok)
 	is.Equal(file, nil)
 }
 
 func TestOneFileNoChunks(t *testing.T) {
+	ctx := context.Background()
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 1)
-	maxPackSize := int64(8 * kib)
-	minChunkSize := int64(1 * kib)
-	maxChunkSize := int64(2 * kib)
 
-	upload := uploads.New(uploadCh, maxPackSize, minChunkSize, maxChunkSize)
+	upload := uploads.New(uploadCh)
+	upload.MaxPackSize = 8 * kib
+	upload.MinChunkSize = 1 * kib
+	upload.MaxChunkSize = 2 * kib
 
 	data := makeData(1 * kib)
 	modTime := time.Now()
 
-	packId, err := upload.Add(&uploads.File{
+	packId, err := upload.Add(ctx, &uploads.File{
 		Reader:  bytes.NewReader(data),
 		Path:    "test.txt",
 		Hash:    sha256.Hash(data),
@@ -76,7 +79,7 @@ func TestOneFileNoChunks(t *testing.T) {
 	is.Equal(file, nil)
 
 	// Close the upload
-	err = upload.Flush()
+	err = upload.Flush(ctx)
 	is.NoErr(err)
 
 	file, ok = pullPackFile(uploadCh)
@@ -84,7 +87,7 @@ func TestOneFileNoChunks(t *testing.T) {
 	is.Equal(file.Path, path.Join("packs", packId))
 	is.Equal(file.Mode, fs.FileMode(0644))
 	is.True(!file.ModTime.Equal(modTime))
-	is.True(int64(len(file.Data)) < maxPackSize)
+	is.True(len(file.Data) < upload.MaxPackSize)
 	pack, err := packs.Unpack(file.Data)
 	is.NoErr(err)
 	is.True(pack != nil)
@@ -103,18 +106,19 @@ func TestOneFileNoChunks(t *testing.T) {
 }
 
 func TestOneFileOneChunk(t *testing.T) {
+	ctx := context.Background()
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 1)
-	maxPackSize := int64(8 * kib)
-	minChunkSize := int64(512)
-	maxChunkSize := int64(1 * kib)
 
-	upload := uploads.New(uploadCh, maxPackSize, minChunkSize, maxChunkSize)
+	upload := uploads.New(uploadCh)
+	upload.MaxPackSize = 8 * kib
+	upload.MinChunkSize = 512
+	upload.MaxChunkSize = 1 * kib
 
 	data := makeData(1 * kib)
 	modTime := time.Now()
 
-	packId, err := upload.Add(&uploads.File{
+	packId, err := upload.Add(ctx, &uploads.File{
 		Reader:  bytes.NewReader(data),
 		Path:    "test.txt",
 		Hash:    sha256.Hash(data),
@@ -131,7 +135,7 @@ func TestOneFileOneChunk(t *testing.T) {
 	is.Equal(file, nil)
 
 	// Close the upload
-	err = upload.Flush()
+	err = upload.Flush(ctx)
 	is.NoErr(err)
 
 	file, ok = pullPackFile(uploadCh)
@@ -139,7 +143,7 @@ func TestOneFileOneChunk(t *testing.T) {
 	is.Equal(file.Path, path.Join("packs", packId))
 	is.Equal(file.Mode, fs.FileMode(0644))
 	is.True(!file.ModTime.Equal(modTime))
-	is.True(int64(len(file.Data)) < maxPackSize)
+	is.True(len(file.Data) < upload.MaxPackSize)
 	pack, err := packs.Unpack(file.Data)
 	is.NoErr(err)
 	is.True(pack != nil)
@@ -160,18 +164,19 @@ func TestOneFileOneChunk(t *testing.T) {
 }
 
 func TestOneFileTwoChunks(t *testing.T) {
+	ctx := context.Background()
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 1)
-	maxPackSize := int64(8 * kib)
-	minChunkSize := int64(512)
-	maxChunkSize := int64(1 * kib)
 
-	upload := uploads.New(uploadCh, maxPackSize, minChunkSize, maxChunkSize)
+	upload := uploads.New(uploadCh)
+	upload.MaxPackSize = 8 * kib
+	upload.MinChunkSize = 512
+	upload.MaxChunkSize = 1 * kib
 
 	data := makeData(2 * kib)
 	modTime := time.Now()
 
-	packId, err := upload.Add(&uploads.File{
+	packId, err := upload.Add(ctx, &uploads.File{
 		Reader:  bytes.NewReader(data),
 		Path:    "test.txt",
 		Hash:    sha256.Hash(data),
@@ -188,7 +193,7 @@ func TestOneFileTwoChunks(t *testing.T) {
 	is.Equal(file, nil)
 
 	// Flush the upload
-	err = upload.Flush()
+	err = upload.Flush(ctx)
 	is.NoErr(err)
 
 	file, ok = pullPackFile(uploadCh)
@@ -196,7 +201,7 @@ func TestOneFileTwoChunks(t *testing.T) {
 	is.Equal(file.Path, path.Join("packs", packId))
 	is.Equal(file.Mode, fs.FileMode(0644))
 	is.True(!file.ModTime.Equal(modTime))
-	is.True(int64(len(file.Data)) < maxPackSize)
+	is.True(len(file.Data) < upload.MaxPackSize)
 
 	pack, err := packs.Unpack(file.Data)
 	is.NoErr(err)
@@ -228,17 +233,18 @@ func TestOneFileTwoChunks(t *testing.T) {
 }
 
 func TestThreeFilesTwoPacks(t *testing.T) {
+	ctx := context.Background()
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 2)
-	maxPackSize := int64(3 * kib)
-	minChunkSize := int64(512)
-	maxChunkSize := int64(1 * kib)
 
-	upload := uploads.New(uploadCh, maxPackSize, minChunkSize, maxChunkSize)
+	upload := uploads.New(uploadCh)
+	upload.MaxPackSize = 3 * kib
+	upload.MinChunkSize = 512
+	upload.MaxChunkSize = 1 * kib
 
 	oneData := makeData(1 * kib)
 	oneModTime := time.Now()
-	onePackId, err := upload.Add(&uploads.File{
+	onePackId, err := upload.Add(ctx, &uploads.File{
 		Reader:  bytes.NewReader(oneData),
 		Path:    "one.txt",
 		Hash:    sha256.Hash(oneData),
@@ -256,7 +262,7 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 
 	twoData := makeData(1 * kib)
 	twoModTime := time.Now()
-	twoPackId, err := upload.Add(&uploads.File{
+	twoPackId, err := upload.Add(ctx, &uploads.File{
 		Reader:  bytes.NewReader(twoData),
 		Path:    "two.txt",
 		Hash:    sha256.Hash(twoData),
@@ -271,7 +277,7 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	// Upload a third file
 	threeData := makeData(2 * kib)
 	threeModTime := time.Now()
-	threePackId, err := upload.Add(&uploads.File{
+	threePackId, err := upload.Add(ctx, &uploads.File{
 		Reader:  bytes.NewReader(threeData),
 		Path:    "three.txt",
 		Hash:    sha256.Hash(threeData),
@@ -290,7 +296,7 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	is.Equal(firstPackFile.Mode, fs.FileMode(0644))
 	is.True(!firstPackFile.ModTime.Equal(oneModTime))
 	is.True(!firstPackFile.ModTime.Equal(twoModTime))
-	is.True(int64(len(firstPackFile.Data)) < maxPackSize)
+	is.True(len(firstPackFile.Data) < upload.MaxPackSize)
 	firstPack, err := packs.Unpack(firstPackFile.Data)
 	is.NoErr(err)
 	is.True(firstPack != nil)
@@ -338,7 +344,7 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	is.Equal(packFile, nil)
 
 	// Flush the upload
-	err = upload.Flush()
+	err = upload.Flush(ctx)
 	is.NoErr(err)
 
 	// Pull the second pack
@@ -347,7 +353,7 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	is.Equal(secondPackFile.Path, path.Join("packs", threePackId))
 	is.Equal(secondPackFile.Mode, fs.FileMode(0644))
 	is.True(!secondPackFile.ModTime.Equal(threeModTime))
-	is.True(int64(len(secondPackFile.Data)) < maxPackSize)
+	is.True(len(secondPackFile.Data) < upload.MaxPackSize)
 	secondPack, err := packs.Unpack(secondPackFile.Data)
 	is.NoErr(err)
 	is.True(secondPack != nil)
@@ -378,18 +384,19 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 // to the overhead of the pack file itself, where the max chunk size is not a
 // hard limit, but a soft limit.
 func TestBigFileThreePacks(t *testing.T) {
+	ctx := context.Background()
 	is := is.New(t)
 	uploadCh := make(chan *repos.File, 3)
-	maxPackSize := int64(4 * kib)
-	minChunkSize := int64(512)
-	maxChunkSize := int64(2 * kib)
 
-	upload := uploads.New(uploadCh, maxPackSize, minChunkSize, maxChunkSize)
+	upload := uploads.New(uploadCh)
+	upload.MaxPackSize = 4 * kib
+	upload.MinChunkSize = 512
+	upload.MaxChunkSize = 2 * kib
 
 	oneData := makeData(8 * kib)
 	oneModTime := time.Now()
 
-	packId, err := upload.Add(&uploads.File{
+	packId, err := upload.Add(ctx, &uploads.File{
 		Reader:  bytes.NewReader(oneData),
 		Path:    "bigfile.txt",
 		Hash:    sha256.Hash(oneData),
@@ -404,7 +411,7 @@ func TestBigFileThreePacks(t *testing.T) {
 	firstPackFile, ok := pullPackFile(uploadCh)
 	is.True(ok)
 	is.Equal(firstPackFile.Mode, fs.FileMode(0644))
-	is.True(int64(len(firstPackFile.Data)) < maxPackSize)
+	is.True(len(firstPackFile.Data) < upload.MaxPackSize)
 	firstPack, err := packs.Unpack(firstPackFile.Data)
 	is.NoErr(err)
 	is.True(firstPack != nil)
@@ -414,7 +421,7 @@ func TestBigFileThreePacks(t *testing.T) {
 	secondPackFile, ok := pullPackFile(uploadCh)
 	is.True(ok)
 	is.Equal(secondPackFile.Mode, fs.FileMode(0644))
-	is.True(int64(len(secondPackFile.Data)) < maxPackSize)
+	is.True(len(secondPackFile.Data) < upload.MaxPackSize)
 	secondPack, err := packs.Unpack(secondPackFile.Data)
 	is.NoErr(err)
 	is.True(secondPack != nil)
@@ -424,7 +431,7 @@ func TestBigFileThreePacks(t *testing.T) {
 	thirdPackFile, ok := pullPackFile(uploadCh)
 	is.True(ok)
 	is.Equal(thirdPackFile.Mode, fs.FileMode(0644))
-	is.True(int64(len(thirdPackFile.Data)) < maxPackSize)
+	is.True(len(thirdPackFile.Data) < upload.MaxPackSize)
 	thirdPack, err := packs.Unpack(thirdPackFile.Data)
 	is.NoErr(err)
 	is.True(thirdPack != nil)
@@ -436,14 +443,14 @@ func TestBigFileThreePacks(t *testing.T) {
 	is.Equal(packFile, nil)
 
 	// Flush the upload
-	err = upload.Flush()
+	err = upload.Flush(ctx)
 	is.NoErr(err)
 
 	// Fourth pack
 	fourthPackFile, ok := pullPackFile(uploadCh)
 	is.True(ok)
 	is.Equal(fourthPackFile.Mode, fs.FileMode(0644))
-	is.True(int64(len(fourthPackFile.Data)) < maxPackSize)
+	is.True(len(fourthPackFile.Data) < upload.MaxPackSize)
 	fourthPack, err := packs.Unpack(fourthPackFile.Data)
 	is.NoErr(err)
 	is.True(fourthPack != nil)

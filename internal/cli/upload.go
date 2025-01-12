@@ -9,10 +9,11 @@ import (
 )
 
 type Upload struct {
-	From  string
-	To    string
-	Tags  []string
-	Cache bool
+	From        string
+	To          string
+	Tags        []string
+	Cache       bool
+	LimitUpload string
 }
 
 func (u *Upload) command(cli cli.Command) cli.Command {
@@ -20,6 +21,7 @@ func (u *Upload) command(cli cli.Command) cli.Command {
 	cmd.Arg("from", "directory to upload").String(&u.From)
 	cmd.Arg("repo", "repository to upload to").String(&u.To)
 	cmd.Flag("tags", "tag the revision").Short('t').Optional().Strings(&u.Tags)
+	cmd.Flag("limit-upload", "limit bytes per second").String(&u.LimitUpload).Default("")
 	return cmd
 }
 
@@ -50,10 +52,11 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 	}
 
 	return c.Chunky.Upload(ctx, &chunky.Upload{
-		From:  fsys,
-		To:    repo,
-		Tags:  in.Tags,
-		User:  user,
-		Cache: cache,
+		From:        fsys,
+		To:          repo,
+		Tags:        in.Tags,
+		User:        user,
+		Cache:       cache,
+		LimitUpload: in.LimitUpload,
 	})
 }

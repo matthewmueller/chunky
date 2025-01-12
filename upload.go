@@ -9,9 +9,11 @@ import (
 	"path"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/matthewmueller/chunky/internal/caches"
 	"github.com/matthewmueller/chunky/internal/chunkyignore"
 	"github.com/matthewmueller/chunky/internal/commits"
+	"github.com/matthewmueller/chunky/internal/rate"
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/internal/uploads"
 	"github.com/matthewmueller/chunky/repos"
@@ -22,15 +24,24 @@ const kiB = 1024
 const miB = 1024 * kiB
 
 type Upload struct {
-	From         fs.FS
-	To           repos.Repo
-	Cache        repos.FS
-	User         string
-	Tags         []string
-	Ignore       func(path string) bool
-	MaxPackSize  int64
-	MinChunkSize int64
-	MaxChunkSize int64
+	From   fs.FS
+	To     repos.Repo
+	Cache  repos.FS
+	User   string
+	Tags   []string
+	Ignore func(path string) bool
+
+	MaxPackSize string
+	maxPackSize int
+
+	MinChunkSize string
+	minChunkSize int
+
+	MaxChunkSize string
+	maxChunkSize int
+
+	LimitUpload string
+	limitUpload int
 }
 
 func (in *Upload) validate() (err error) {
@@ -68,25 +79,61 @@ func (in *Upload) validate() (err error) {
 		in.Ignore = chunkyignore.FromFS(in.From)
 	}
 
-	if in.MaxPackSize < 0 {
-		err = errors.Join(err, errors.New("max pack size cannot be negative"))
-	} else if in.MaxPackSize == 0 {
-		in.MaxPackSize = 32 * miB
+	// Parse the max pack size
+	if in.MaxPackSize != "" {
+		maxPackSize, err2 := humanize.ParseBytes(in.MaxPackSize)
+		if err2 != nil {
+			err = errors.Join(err, fmt.Errorf("invalid max pack size: %w", err2))
+		} else {
+			in.maxPackSize = int(maxPackSize)
+		}
+	} else {
+		in.maxPackSize = 32 * miB
 	}
-	if in.MinChunkSize < 0 {
-		err = errors.Join(err, errors.New("min chunk size cannot be negative"))
-	} else if in.MinChunkSize == 0 {
-		in.MinChunkSize = 512 * kiB
+
+	// Parse the min chunk size
+	if in.MinChunkSize != "" {
+		minChunkSize, err2 := humanize.ParseBytes(in.MinChunkSize)
+		if err2 != nil {
+			err = errors.Join(err, fmt.Errorf("invalid min chunk size: %w", err2))
+		} else {
+			in.minChunkSize = int(minChunkSize)
+		}
+	} else {
+		in.minChunkSize = 512 * kiB
 	}
-	if in.MaxChunkSize < 0 {
-		err = errors.Join(err, errors.New("max chunk size cannot be negative"))
-	} else if in.MaxChunkSize == 0 {
-		in.MaxChunkSize = 8 * miB
+
+	// Parse the max chunk size
+	if in.MaxChunkSize != "" {
+		maxChunkSize, err2 := humanize.ParseBytes(in.MaxChunkSize)
+		if err2 != nil {
+			err = errors.Join(err, fmt.Errorf("invalid max chunk size: %w", err2))
+		} else {
+			in.maxChunkSize = int(maxChunkSize)
+		}
+	} else {
+		in.maxChunkSize = 8 * miB
 	}
-	if in.MinChunkSize > in.MaxChunkSize {
+
+	// Parse the upload limit
+	if in.LimitUpload != "" {
+		uploadLimit, err2 := humanize.ParseBytes(in.LimitUpload)
+		if err2 != nil {
+			err = errors.Join(err, fmt.Errorf("invalid upload limit: %w", err2))
+		} else {
+			in.limitUpload = int(uploadLimit)
+		}
+	} else {
+		in.limitUpload = 0 // unlimited
+	}
+
+	// Ensure the min chunk size is less than the max chunk size
+	if in.minChunkSize > in.maxChunkSize {
 		err = errors.Join(err, errors.New("min chunk size cannot be greater than max chunk size"))
 	}
-	if in.MaxPackSize < in.MaxChunkSize {
+
+	// Ensure the max pack size is greater than the max chunk size
+	if in.maxPackSize < in.maxChunkSize {
 		err = errors.Join(err, errors.New("max pack size cannot be less than max chunk size"))
 	}
 
@@ -116,7 +163,11 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		return in.To.Upload(ctx, uploadCh)
 	})
 
-	upload := uploads.New(uploadCh, in.MaxPackSize, in.MinChunkSize, in.MaxChunkSize)
+	upload := uploads.New(uploadCh)
+	upload.MaxPackSize = in.maxPackSize
+	upload.MinChunkSize = in.minChunkSize
+	upload.MaxChunkSize = in.maxChunkSize
+	upload.Limiter = rate.New(in.limitUpload)
 
 	// Walk over the files, chunk them and add them to the file system we're going
 	// to upload. We'll also add each file to the commit object.
@@ -129,7 +180,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 
 		// Hash the file into a sha256 hash, this reads the file in chunks, rather
 		// than loading the entire file into memory.
-		fileHash, err := sha256.HashFile(in.From, fpath, in.MaxChunkSize)
+		fileHash, err := sha256.HashFile(in.From, fpath, in.maxChunkSize)
 		if err != nil {
 			return fmt.Errorf("unable to hash file %q: %w", fpath, err)
 		}
@@ -157,7 +208,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		}
 
 		// Add the file to the pack
-		packId, err := upload.Add(&uploads.File{
+		packId, err := upload.Add(ctx, &uploads.File{
 			Reader:  file,
 			Path:    fpath,
 			Hash:    fileHash,
@@ -184,7 +235,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	}
 
 	// Upload any remaining files in the pack
-	if err := upload.Flush(); err != nil {
+	if err := upload.Flush(ctx); err != nil {
 		close(uploadCh)
 		return err
 	}

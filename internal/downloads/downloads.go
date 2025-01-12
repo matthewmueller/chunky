@@ -13,6 +13,7 @@ import (
 	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/repos"
+	"golang.org/x/sync/errgroup"
 )
 
 func New(pr packs.Reader) *Downloader {
@@ -31,10 +32,15 @@ func (d *Downloader) Download(ctx context.Context, from repos.Repo, revision str
 	if err != nil {
 		return fmt.Errorf("downloads: unable to load commit %q: %w", revision, err)
 	}
+	eg, ctx := errgroup.WithContext(ctx)
 	for _, file := range commit.Files() {
-		if err := d.downloadFile(ctx, from, to, file); err != nil {
-			return fmt.Errorf("downloads: unable to download commit %q: %w", revision, err)
-		}
+		file := file
+		eg.Go(func() error {
+			return d.downloadFile(ctx, from, to, file)
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("downloads: unable to download commit %q: %w", revision, err)
 	}
 	return nil
 }

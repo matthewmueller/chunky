@@ -1,6 +1,7 @@
 package uploads
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -9,27 +10,37 @@ import (
 
 	"github.com/matthewmueller/chunky/internal/chunker"
 	"github.com/matthewmueller/chunky/internal/packs"
+	"github.com/matthewmueller/chunky/internal/rate"
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/virt"
 	"github.com/segmentio/ksuid"
 )
 
-func New(uploadCh chan<- *repos.File, maxPackSize, minChunkSize, maxChunkSize int64) *Upload {
+const kiB = 1024
+const miB = 1024 * kiB
+
+func New(uploadCh chan<- *repos.File) *Upload {
 	return &Upload{
-		uploadCh:     uploadCh,
-		maxPackSize:  maxPackSize,
-		minChunkSize: minChunkSize,
-		maxChunkSize: maxChunkSize,
-		current:      newPackFile(),
+		uploadCh: uploadCh,
+
+		MaxPackSize:  32 * miB,
+		MinChunkSize: 512 * kiB,
+		MaxChunkSize: 8 * miB,
+
+		// By default, don't limit the upload rate
+		Limiter: rate.New(0),
+
+		current: newPackFile(),
 	}
 }
 
 type Upload struct {
 	uploadCh     chan<- *repos.File
-	maxPackSize  int64
-	minChunkSize int64
-	maxChunkSize int64
+	MaxPackSize  int
+	MinChunkSize int
+	MaxChunkSize int
+	Limiter      rate.Limiter
 
 	// Current pack
 	current *packFile
@@ -69,7 +80,7 @@ func (p *packFile) File() (*virt.File, error) {
 	}, nil
 }
 
-func (u *Upload) Add(file *File) (packId string, err error) {
+func (u *Upload) Add(ctx context.Context, file *File) (packId string, err error) {
 	fileChunk := &packs.Chunk{
 		Path:    file.Path,
 		Mode:    file.Mode,
@@ -79,13 +90,13 @@ func (u *Upload) Add(file *File) (packId string, err error) {
 	}
 
 	// If the file data is less than one chunk, just add it directly to the pack
-	if fileChunk.Length()+file.Size < u.maxChunkSize {
+	if fileChunk.Length()+int(file.Size) < u.MaxChunkSize {
 		data, err := io.ReadAll(file)
 		if err != nil {
 			return "", fmt.Errorf("reading file data: %w", err)
 		}
 		fileChunk.Data = data
-		if err := u.maybeFlush(fileChunk.Length()); err != nil {
+		if err := u.maybeFlush(ctx, fileChunk.Length()); err != nil {
 			return "", fmt.Errorf("flushing pack: %w", err)
 		}
 		u.current.Add(fileChunk)
@@ -93,7 +104,7 @@ func (u *Upload) Add(file *File) (packId string, err error) {
 	}
 
 	// Chunk the file data
-	chunker := chunker.New(file, uint(u.minChunkSize), uint(u.maxChunkSize))
+	chunker := chunker.New(file, uint(u.MinChunkSize), uint(u.MaxChunkSize))
 	for {
 		chunk, err := chunker.Chunk()
 		if err != nil {
@@ -111,7 +122,7 @@ func (u *Upload) Add(file *File) (packId string, err error) {
 
 		// If adding the blob chunk exceeds the max pack size, upload the current
 		// pack and start a new pack
-		if err := u.maybeFlush(blobChunk.Length()); err != nil {
+		if err := u.maybeFlush(ctx, blobChunk.Length()); err != nil {
 			return "", fmt.Errorf("flushing pack: %w", err)
 		}
 
@@ -124,7 +135,7 @@ func (u *Upload) Add(file *File) (packId string, err error) {
 
 	// If adding the file chunk exceeds the max pack size, upload the current pack
 	// and start a new one
-	if err := u.maybeFlush(fileChunk.Length()); err != nil {
+	if err := u.maybeFlush(ctx, fileChunk.Length()); err != nil {
 		return "", fmt.Errorf("flushing pack: %w", err)
 	}
 	u.current.Add(fileChunk)
@@ -133,19 +144,22 @@ func (u *Upload) Add(file *File) (packId string, err error) {
 }
 
 // Flush the current pack if adding the chunk would exceed the max pack size
-func (u *Upload) maybeFlush(chunkLength int64) error {
-	if u.current.Length()+chunkLength < u.maxPackSize {
+func (u *Upload) maybeFlush(ctx context.Context, chunkLength int) error {
+	if u.current.Length()+chunkLength < u.MaxPackSize {
 		return nil
 	}
-	return u.Flush()
+	return u.Flush(ctx)
 }
 
-func (u *Upload) Flush() error {
+func (u *Upload) Flush(ctx context.Context) error {
 	if u.current.Length() == 0 {
 		return nil
 	}
 	packFile, err := u.current.File()
 	if err != nil {
+		return err
+	}
+	if err := u.Limiter.Use(ctx, len(packFile.Data)); err != nil {
 		return err
 	}
 	u.uploadCh <- packFile

@@ -16,8 +16,8 @@ type Tag struct {
 func (t *Tag) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("tag", "tag a commit")
 	cmd.Arg("repo", "repository to tag").String(&t.Repo)
-	cmd.Arg("revision", "revision to tag").String(&t.Revision)
 	cmd.Arg("tag", "tag to create").String(&t.Tag)
+	cmd.Flag("revision", "revision to tag").String(&t.Revision).Default("latest")
 	return cmd
 }
 

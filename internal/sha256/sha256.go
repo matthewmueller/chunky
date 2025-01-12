@@ -17,7 +17,7 @@ func String(hash [32]byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func HashFile(fsys fs.FS, path string, chunkSize int64) (string, error) {
+func HashFile(fsys fs.FS, path string, chunkSize int) (string, error) {
 	file, err := fsys.Open(path)
 	if err != nil {
 		return "", err

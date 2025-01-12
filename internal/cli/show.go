@@ -20,7 +20,7 @@ type Show struct {
 func (s *Show) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("show", "show a revision")
 	cmd.Arg("repo", "repository to show").String(&s.Repo)
-	cmd.Arg("revision", "revision to show").String(&s.Revision)
+	cmd.Flag("revision", "revision to show").String(&s.Revision).Default("latest")
 	return cmd
 }
 

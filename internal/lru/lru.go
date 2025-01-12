@@ -11,12 +11,12 @@ type Cache[I Item] interface {
 }
 
 type Item interface {
-	Length() int64
+	Length() int
 }
 
 type cache[I Item] struct {
-	maxBytes  int64
-	usedBytes int64
+	maxBytes  int
+	usedBytes int
 	ll        *list.List
 	cache     map[string]*list.Element
 	mu        sync.Mutex
@@ -27,7 +27,7 @@ type entry[I Item] struct {
 	value I
 }
 
-func New[I Item](maxBytes int64) *cache[I] {
+func New[I Item](maxBytes int) *cache[I] {
 	return &cache[I]{
 		maxBytes: maxBytes,
 		ll:       list.New(),
@@ -60,7 +60,7 @@ func (c *cache[I]) Set(key string, value I) {
 	} else {
 		ele := c.ll.PushFront(&entry[I]{key, value})
 		c.cache[key] = ele
-		c.usedBytes += int64(len(key)) + value.Length()
+		c.usedBytes += len(key) + value.Length()
 	}
 
 	for c.maxBytes != 0 && c.maxBytes < c.usedBytes {
@@ -74,7 +74,7 @@ func (c *cache[I]) removeOldest() {
 		c.ll.Remove(ele)
 		kv := ele.Value.(*entry[I])
 		delete(c.cache, kv.key)
-		c.usedBytes -= int64(len(kv.key)) + kv.value.Length()
+		c.usedBytes -= len(kv.key) + kv.value.Length()
 	}
 }
 

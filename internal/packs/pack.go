@@ -61,16 +61,16 @@ func (c *Chunk) Links() []*Ref {
 	return c.Refs
 }
 
-func (c *Chunk) Length() int64 {
-	n := int64(len(c.Path))
-	n += int64(len(c.Hash))
+func (c *Chunk) Length() int {
+	n := len(c.Path)
+	n += len(c.Hash)
 	n += 8 // Size (int64)
 	n += 8 // ModTime (int64)
 	n += 4 // Mode (uint32)
-	n += int64(len(c.Data))
+	n += len(c.Data)
 	for _, blob := range c.Refs {
-		n += int64(len(blob.Pack))
-		n += int64(len(blob.Hash))
+		n += len(blob.Pack)
+		n += len(blob.Hash)
 	}
 	return n
 }
@@ -97,7 +97,7 @@ func (c *Chunk) String() string {
 
 type Pack struct {
 	chunks []*Chunk
-	length int64
+	length int
 }
 
 func (p *Pack) Add(chunks ...*Chunk) {
@@ -157,7 +157,7 @@ func (p *Pack) Encode(w io.Writer) error {
 }
 
 // Length returns the number of bytes in the pack
-func (p *Pack) Length() int64 {
+func (p *Pack) Length() int {
 	return p.length
 }
 
