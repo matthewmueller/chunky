@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/klauspost/compress v1.17.11
-	github.com/livebud/cli v0.0.11
+	github.com/livebud/cli v0.0.12
 	github.com/livebud/color v0.0.2
 	github.com/matryer/is v1.4.1
 	github.com/matthewmueller/logs v0.0.6
