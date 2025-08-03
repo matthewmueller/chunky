@@ -14,7 +14,6 @@ import (
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/sshx"
 	"github.com/pkg/sftp"
-	"golang.org/x/sync/errgroup"
 )
 
 // Dial an SFTP connection and return a new repository.
@@ -66,29 +65,15 @@ func (c *Repo) Close() (err error) {
 	return c.closer()
 }
 
-func (c *Repo) Upload(ctx context.Context, fromCh <-chan *repos.File) error {
-	eg := new(errgroup.Group)
-	for file := range fromCh {
-		remotePath := filepath.Join(c.dir, file.Path)
+func (c *Repo) Upload(ctx context.Context, from *repos.File) error {
+	remotePath := filepath.Join(c.dir, from.Path)
 
-		// Handle creating directories
-		if file.IsDir() {
-			eg.Go(func() error {
-				return mkdirAll(c.sftp, remotePath, file.Mode)
-			})
-			continue
-		}
-
-		// Handle file uploads concurrently
-		eg.Go(func() error {
-			return c.uploadFile(file, remotePath)
-		})
+	// Handle creating directories
+	if from.IsDir() {
+		return mkdirAll(c.sftp, remotePath, from.Mode)
 	}
 
-	if err := eg.Wait(); err != nil {
-		return fmt.Errorf("sftp: unable to upload files: %w", err)
-	}
-	return nil
+	return c.uploadFile(from, remotePath)
 }
 
 func (c *Repo) uploadFile(file *repos.File, remotePath string) error {
@@ -107,49 +92,48 @@ func (c *Repo) uploadFile(file *repos.File, remotePath string) error {
 }
 
 // TODO: this implementation conceptually differs from the local repo implementation
-func (c *Repo) Download(ctx context.Context, toCh chan<- *repos.File, paths ...string) error {
-	eg := new(errgroup.Group)
-	for _, path := range paths {
-		eg.Go(func() error {
-			return c.downloadFile(toCh, path)
-		})
-	}
-	if err := eg.Wait(); err != nil {
-		return fmt.Errorf("sftp: unable to download files: %w", err)
-	}
-	return nil
+func (c *Repo) Download(ctx context.Context, path string) (*repos.File, error) {
+	return c.downloadFile(path)
+	// eg := new(errgroup.Group)
+	// for _, path := range paths {
+	// 	eg.Go(func() error {
+
+	// 	})
+	// }
+	// if err := eg.Wait(); err != nil {
+	// 	return fmt.Errorf("sftp: unable to download files: %w", err)
+	// }
+	// return nil
 }
 
-func (c *Repo) downloadFile(toCh chan<- *repos.File, path string) error {
+func (c *Repo) downloadFile(path string) (*repos.File, error) {
 	remotePath := filepath.Join(c.dir, path)
 	remoteFile, err := c.sftp.Open(remotePath)
 	if err != nil {
-		return fmt.Errorf("sftp: unable to open remote file for download %q: %w", remotePath, err)
+		return nil, fmt.Errorf("sftp: unable to open remote file for download %q: %w", remotePath, err)
 	}
 	defer remoteFile.Close()
 	fileInfo, err := remoteFile.Stat()
 	if err != nil {
-		return fmt.Errorf("sftp: unable to stat remote file %q: %w", remotePath, err)
+		return nil, fmt.Errorf("sftp: unable to stat remote file %q: %w", remotePath, err)
 	}
 	// Handle directories
 	if fileInfo.IsDir() {
-		toCh <- &repos.File{
+		return &repos.File{
 			Path: path,
 			Mode: fileInfo.Mode(),
-		}
-		return nil
+		}, nil
 	}
 	// Handle files
 	data, err := io.ReadAll(remoteFile)
 	if err != nil {
-		return fmt.Errorf("sftp: unable to read remote file %q: %w", remotePath, err)
+		return nil, fmt.Errorf("sftp: unable to read remote file %q: %w", remotePath, err)
 	}
-	toCh <- &repos.File{
+	return &repos.File{
 		Path: path,
 		Data: data,
 		Mode: fileInfo.Mode(),
-	}
-	return nil
+	}, nil
 }
 
 func (c *Repo) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error {

@@ -44,9 +44,9 @@ func Parse(repoPath string) (*url.URL, error) {
 // Repo is a repository interface for uploading and downloading files
 type Repo interface {
 	// Upload from a filesystem to the repository
-	Upload(ctx context.Context, fromCh <-chan *File) error
+	Upload(ctx context.Context, files *File) error
 	// Download paths from the repository to a filesystem
-	Download(ctx context.Context, toCh chan<- *File, paths ...string) error
+	Download(ctx context.Context, path string) (*File, error)
 	// Walk the repository
 	Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error
 	// Close the repository
@@ -55,10 +55,11 @@ type Repo interface {
 
 // Download a single file from the repository.
 func Download(ctx context.Context, repo Repo, path string) (*File, error) {
-	fileCh := make(chan *File, 1)
-	if err := repo.Download(ctx, fileCh, path); err != nil {
-		return nil, fmt.Errorf("repos: unable to download file %q: %w", path, err)
-	}
-	close(fileCh)
-	return <-fileCh, nil
+	return repo.Download(ctx, path)
+	// // fileCh := make(chan *File, 1)
+	// if err :=  err != nil {
+	// 	return nil, fmt.Errorf("repos: unable to download file %q: %w", path, err)
+	// }
+	// close(fileCh)
+	// return <-fileCh, nil
 }

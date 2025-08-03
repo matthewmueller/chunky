@@ -177,12 +177,27 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	commit := commits.New(in.User, createdAt)
 	commitId := commit.ID()
 
-	uploadCh := make(chan *repos.File, in.concurrency)
+	uploadCh := make(chan *repos.File, 1)
 	// Start the upload workers
 	eg := new(errgroup.Group)
 	for i := 0; i < in.concurrency; i++ {
 		eg.Go(func() error {
-			return in.To.Upload(ctx, uploadCh)
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case file := <-uploadCh:
+					if file == nil {
+						fmt.Println("closing worker", i)
+						return nil
+					}
+					fmt.Println("uploading", file.Path)
+					if err := in.To.Upload(ctx, file); err != nil {
+						return err
+					}
+					fmt.Println("uploaded", file.Path, len(file.Data))
+				}
+			}
 		})
 	}
 

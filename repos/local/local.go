@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/virt"
-	"golang.org/x/sync/errgroup"
 )
 
 func New(fsys repos.FS) *Repo {
@@ -24,14 +22,8 @@ type Repo struct {
 
 var _ repos.Repo = (*Repo)(nil)
 
-func (r *Repo) Upload(ctx context.Context, fromCh <-chan *repos.File) error {
-	eg := new(errgroup.Group)
-	for file := range fromCh {
-		eg.Go(func() error {
-			return r.uploadFile(file)
-		})
-	}
-	return eg.Wait()
+func (r *Repo) Upload(ctx context.Context, from *repos.File) error {
+	return r.uploadFile(from)
 }
 
 func (r *Repo) uploadFile(file *repos.File) error {
@@ -55,22 +47,23 @@ func (r *Repo) uploadFile(file *repos.File) error {
 	return nil
 }
 
-func (r *Repo) Download(ctx context.Context, toCh chan<- *repos.File, paths ...string) error {
-	target := path.Join(paths...)
-	if target == "" {
-		target = "."
-	}
-	return r.Walk(ctx, target, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		vfile, err := virt.From(r.fsys, path)
-		if err != nil {
-			return err
-		}
-		toCh <- vfile
-		return nil
-	})
+func (r *Repo) Download(ctx context.Context, path string) (*repos.File, error) {
+	return virt.From(r.fsys, path)
+	// target := path.Join(paths...)
+	// if target == "" {
+	// 	target = "."
+	// }
+	// return r.Walk(ctx, target, func(path string, d fs.DirEntry, err error) error {
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	vfile, err := virt.From(r.fsys, path)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	toCh <- vfile
+	// 	return nil
+	// })
 }
 
 func (r *Repo) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error {

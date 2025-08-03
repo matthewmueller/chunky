@@ -33,33 +33,64 @@ func (d *Downloader) Download(ctx context.Context, from repos.Repo, revision str
 	if err != nil {
 		return fmt.Errorf("downloads: unable to load commit %q: %w", revision, err)
 	}
-	// Download the files concurrently in batches based on the number of CPUs
-	// TODO: consider simplifying with buffered channels
-	for _, files := range splitFiles(commit.Files(), d.Concurrency) {
-		eg, ctx := errgroup.WithContext(ctx)
-		for _, file := range files {
-			file := file
-			eg.Go(func() error {
-				return d.downloadFile(ctx, from, to, file)
-			})
-		}
-		if err := eg.Wait(); err != nil {
-			return fmt.Errorf("downloads: unable to download commit %q: %w", revision, err)
+	eg, ctx := errgroup.WithContext(ctx)
+	fileCh := make(chan *commits.File, 1)
+	// TODO: clean this up
+	for range d.Concurrency {
+		eg.Go(d.worker(ctx, from, to, fileCh))
+	}
+	for _, file := range commit.Files() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case fileCh <- file:
 		}
 	}
-	return nil
+	close(fileCh)
+	return eg.Wait()
+
+	// // Download the files concurrently in batches based on the number of CPUs
+	// // TODO: consider simplifying with buffered channels
+	// for _, files := range splitFiles(commit.Files(), d.Concurrency) {
+	// 	eg, ctx := errgroup.WithContext(ctx)
+	// 	for _, file := range files {
+	// 		file := file
+	// 		eg.Go(func() error {
+	// 			return d.downloadFile(ctx, from, to, file)
+	// 		})
+	// 	}
+	// 	if err := eg.Wait(); err != nil {
+	// 		return fmt.Errorf("downloads: unable to download commit %q: %w", revision, err)
+	// 	}
+	// }
+	// return nil
 }
 
-func splitFiles(files []*commits.File, size int) [][]*commits.File {
-	if size == 0 {
-		return [][]*commits.File{files}
+func (d *Downloader) worker(ctx context.Context, from repos.Repo, to repos.FS, fileCh chan *commits.File) func() error {
+	return func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case file := <-fileCh:
+				if err := d.downloadFile(ctx, from, to, file); err != nil {
+					return err
+				}
+			}
+		}
 	}
-	var buckets [][]*commits.File
-	for i := 0; i < len(files); i += size {
-		buckets = append(buckets, files[i:min(i+size, len(files))])
-	}
-	return buckets
 }
+
+// func splitFiles(files []*commits.File, size int) [][]*commits.File {
+// 	if size == 0 {
+// 		return [][]*commits.File{files}
+// 	}
+// 	var buckets [][]*commits.File
+// 	for i := 0; i < len(files); i += size {
+// 		buckets = append(buckets, files[i:min(i+size, len(files))])
+// 	}
+// 	return buckets
+// }
 
 func (d *Downloader) downloadFile(ctx context.Context, from repos.Repo, to repos.FS, cf *commits.File) error {
 	// Load the pack that contains the file chunk

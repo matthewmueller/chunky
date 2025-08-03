@@ -28,19 +28,40 @@ func (c *CLI) Create(ctx context.Context, in *Create) error {
 		return err
 	}
 	// Create the repository
-	fileCh := make(chan *repos.File, 3)
-	fileCh <- &repos.File{
+	if err := repo.Upload(ctx, &repos.File{
 		Path: "commits",
 		Mode: fs.ModeDir | 0755,
+	}); err != nil {
+		return err
 	}
-	fileCh <- &repos.File{
+	if err := repo.Upload(ctx, &repos.File{
 		Path: "packs",
 		Mode: fs.ModeDir | 0755,
+	}); err != nil {
+		return err
 	}
-	fileCh <- &repos.File{
+	if err := repo.Upload(ctx, &repos.File{
 		Path: "tags",
 		Mode: fs.ModeDir | 0755,
+	}); err != nil {
+		return err
 	}
-	close(fileCh)
-	return repo.Upload(ctx, fileCh)
+	// files := []*repos.File{
+	// 	{
+	// 	},
+	// 	{
+	// 		Path: "packs",
+	// 		Mode: fs.ModeDir | 0755,
+	// 	},
+	// 	{
+	// 		Path: "tags",
+	// 		Mode: fs.ModeDir | 0755,
+	// 	},
+	// }
+	// fileCh := make(chan *repos.File, 3)
+	// fileCh <- &repos.File
+	// fileCh <- &repos.File
+	// fileCh <- &repos.File
+	// close(fileCh)
+	return nil
 }
