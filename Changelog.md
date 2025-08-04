@@ -1,3 +1,8 @@
+# 0.2.2 / 2025-08-04
+
+- preserve symlinks
+- bump cli
+
 # 0.2.1 / 2025-01-12
 
 - add logging with log level flag
