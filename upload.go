@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os/user"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -19,11 +21,12 @@ import (
 	"github.com/matthewmueller/chunky/internal/uploads"
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/logs"
+	"github.com/matthewmueller/virt"
 	"golang.org/x/sync/errgroup"
 )
 
 type Upload struct {
-	From   fs.FS
+	From   virt.FS
 	To     repos.Repo
 	Cache  repos.FS
 	User   string
@@ -221,22 +224,20 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 			return nil
 		}
 
-		// Open the file
-		file, err := in.From.Open(fpath)
+		// Get the file info
+		info, err := in.From.Lstat(fpath)
 		if err != nil {
 			return err
 		}
-		defer file.Close()
 
-		// Get the file info
-		info, err := file.Stat()
+		reader, err := openReader(in.From, fpath, info)
 		if err != nil {
 			return err
 		}
 
 		// Add the file to the pack
 		packId, err := upload.Add(ctx, &uploads.File{
-			Reader:  file,
+			Reader:  reader,
 			Path:    fpath,
 			Hash:    fileHash,
 			Mode:    info.Mode(),
@@ -309,4 +310,19 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 
 	close(uploadCh)
 	return eg.Wait()
+}
+
+// Open a file from the filesystem, handling symlinks. For symlinks, the
+// link target is the file data.
+func openReader(fsys virt.FS, path string, info fs.FileInfo) (io.Reader, error) {
+	if info.Mode()&fs.ModeSymlink != 0 {
+		// If the file is a symlink, read the link target
+		link, err := fsys.Readlink(path)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read symlink %q: %w", path, err)
+		}
+		return strings.NewReader(link), nil
+	}
+	// Otherwise, read the file data
+	return fsys.Open(path)
 }

@@ -13,7 +13,6 @@ import (
 )
 
 var _ fs.ReadDirFS = (*Repo)(nil)
-var _ fs.StatFS = (*Repo)(nil)
 var _ repos.FS = (*Repo)(nil)
 
 func (r *Repo) Open(name string) (fs.File, error) {
@@ -33,6 +32,18 @@ func (r *Repo) OpenFile(name string, flag int, perm fs.FileMode) (virt.RWFile, e
 
 func (r *Repo) Stat(name string) (fs.FileInfo, error) {
 	return r.sftp.Stat(path.Join(r.dir, name))
+}
+
+func (r *Repo) Lstat(name string) (fs.FileInfo, error) {
+	return r.sftp.Lstat(path.Join(r.dir, name))
+}
+
+func (r *Repo) Readlink(name string) (string, error) {
+	link, err := r.sftp.ReadLink(path.Join(r.dir, name))
+	if err != nil {
+		return "", fmt.Errorf("sftp: unable to read symlink %q: %w", name, err)
+	}
+	return link, nil
 }
 
 func (r *Repo) ReadDir(name string) ([]fs.DirEntry, error) {

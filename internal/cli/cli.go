@@ -27,9 +27,6 @@ import (
 	"github.com/matthewmueller/virt"
 )
 
-const kib = 1024
-const mib = 1024 * kib
-
 func Run() int {
 	cli := Default()
 	ctx := context.Background()

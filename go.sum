@@ -38,8 +38,8 @@ github.com/matthewmueller/sshx v0.0.11 h1:BCH4APJAaU7mpRe02MRjTI9faeKR9Jm3ApyKPV
 github.com/matthewmueller/sshx v0.0.11/go.mod h1:AaHyFD8h5EYKxZvPKxEU7q8XOsCoE36Q0B8aaeqc4dk=
 github.com/matthewmueller/text v0.0.0-20210424201111-ec1e4af8dfe8 h1:XTmVlF7P9bpSNkLFlxpNlhig0kaVJ5mO4D3yK2CYjmM=
 github.com/matthewmueller/text v0.0.0-20210424201111-ec1e4af8dfe8/go.mod h1:vtPaEU72VzARd4tSSzHIX7DddCEamoO2X4ozlrdmtNY=
-github.com/matthewmueller/virt v0.0.12 h1:ezlTGZcvJJXkDnLaGLtnIp0AfjXfpAACI/mzZa59gbo=
-github.com/matthewmueller/virt v0.0.12/go.mod h1:AeQx4mwsmT/MW6HSTYrCP/VJuE/4KqUde+W5Ba+JrRo=
+github.com/matthewmueller/virt v0.0.14 h1:1idhfdxT6EWJRPRqjySnztTjMHVW6SHwGhrhgKEe0XI=
+github.com/matthewmueller/virt v0.0.14/go.mod h1:AeQx4mwsmT/MW6HSTYrCP/VJuE/4KqUde+W5Ba+JrRo=
 github.com/pkg/sftp v1.13.7 h1:uv+I3nNJvlKZIQGSr8JVQLNHFU9YhhNpvC14Y6KgmSM=
 github.com/pkg/sftp v1.13.7/go.mod h1:KMKI0t3T6hfA+lTR/ssZdunHo+uwq7ghoN09/FSu3DY=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -72,6 +73,25 @@ func (d *Downloader) downloadFile(ctx context.Context, from repos.Repo, to repos
 	fc, ok := pack.Chunk(cf.Path)
 	if !ok {
 		return fmt.Errorf("cli: unable to find file %q in pack %q", cf.Path, cf.PackId)
+	}
+
+	if fc.Mode&fs.ModeSymlink != 0 {
+		if err := to.WriteFile(fc.Path, []byte(fc.Data), fc.Mode); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				if err := to.RemoveAll(fc.Path); err != nil {
+					return fmt.Errorf("cli: unable to remove existing symlink %q: %w", fc.Path, err)
+				}
+			} else if !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("cli: unable to create symlink %q: %w", fc.Path, err)
+			}
+			if err := to.MkdirAll(filepath.Dir(fc.Path), 0755); err != nil {
+				return fmt.Errorf("cli: unable to create directory %q: %w", fc.Path, err)
+			}
+			if err := to.WriteFile(fc.Path, []byte(fc.Data), fc.Mode); err != nil {
+				return fmt.Errorf("cli: unable to create symlink %q: %w", fc.Path, err)
+			}
+		}
+		return nil
 	}
 
 	// Create the file

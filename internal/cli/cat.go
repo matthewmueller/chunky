@@ -2,14 +2,9 @@ package cli
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/dustin/go-humanize"
 	"github.com/livebud/cli"
-	"github.com/matthewmueller/chunky/internal/downloads"
-	"github.com/matthewmueller/chunky/internal/lru"
-	"github.com/matthewmueller/chunky/internal/packs"
-	"github.com/matthewmueller/chunky/internal/rate"
+	"github.com/matthewmueller/chunky"
 )
 
 type Cat struct {
@@ -36,23 +31,19 @@ func (c *CLI) Cat(ctx context.Context, in *Cat) error {
 		return err
 	}
 
-	pr := packs.NewCachedReader(c.log, lru.New[*packs.Pack](c.log, 512*mib))
-
 	// Set the download limit if provided
+	limitDownload := ""
 	if in.LimitDownload != nil {
-		limitDownload, err := humanize.ParseBytes(*in.LimitDownload)
-		if err != nil {
-			return fmt.Errorf("invalid limit-download: %s", err)
-		}
-		pr.Limiter = rate.New(int(limitDownload))
+		limitDownload = *in.LimitDownload
 	}
 
-	download := downloads.New(pr)
-
-	// Set the concurrency if provided
-	if in.Concurrency != nil {
-		download.Concurrency = *in.Concurrency
-	}
-
-	return download.Cat(ctx, c.Stdout, repo, in.Revision, in.Path)
+	// Download a file
+	return c.chunky.Cat(ctx, &chunky.Cat{
+		From:          repo,
+		To:            c.Stdout,
+		Revision:      in.Revision,
+		LimitDownload: limitDownload,
+		Concurrency:   in.Concurrency,
+		Path:          in.Path,
+	})
 }

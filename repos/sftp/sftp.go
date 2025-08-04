@@ -127,7 +127,7 @@ func (c *Repo) downloadFile(toCh chan<- *repos.File, path string) error {
 		return fmt.Errorf("sftp: unable to open remote file for download %q: %w", remotePath, err)
 	}
 	defer remoteFile.Close()
-	fileInfo, err := remoteFile.Stat()
+	fileInfo, err := c.sftp.Lstat(remotePath)
 	if err != nil {
 		return fmt.Errorf("sftp: unable to stat remote file %q: %w", remotePath, err)
 	}
@@ -161,7 +161,10 @@ func (c *Repo) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error {
 			}
 			return fmt.Errorf("sftp: unable to walk %q: %w", dir, err)
 		}
-		info := walker.Stat()
+		info, err := c.sftp.Lstat(walker.Path())
+		if err != nil {
+			return fmt.Errorf("sftp: unable to lstat %q: %w", walker.Path(), err)
+		}
 		de := fs.FileInfoToDirEntry(info)
 		rel, err := filepath.Rel(c.dir, walker.Path())
 		if err != nil {
