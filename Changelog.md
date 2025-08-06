@@ -1,3 +1,8 @@
+# 0.2.3 / 2025-08-06
+
+- expose defaults concurrency and max chunk size
+- reduce interface size for upload to read-only functions
+
 # 0.2.2 / 2025-08-04
 
 - preserve symlinks
