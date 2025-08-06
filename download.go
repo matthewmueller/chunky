@@ -12,6 +12,9 @@ import (
 	"github.com/matthewmueller/chunky/repos"
 )
 
+// DefaultMaxCacheSize is the default maximum size of the LRU for caching packs
+const DefaultMaxCacheSize = 512 * miB // 512 MiB
+
 type Download struct {
 	From     repos.Repo
 	To       repos.FS
@@ -50,7 +53,7 @@ func (in *Download) validate() (err error) {
 			in.maxCacheSize = int(maxCacheSize)
 		}
 	} else {
-		in.maxCacheSize = 512 * miB
+		in.maxCacheSize = DefaultMaxCacheSize
 	}
 
 	if in.LimitDownload != "" {
@@ -72,7 +75,7 @@ func (in *Download) validate() (err error) {
 			err = errors.Join(err, errors.New("invalid concurrency"))
 		}
 	} else {
-		in.concurrency = defaultConcurrency
+		in.concurrency = DefaultConcurrency
 	}
 
 	return err

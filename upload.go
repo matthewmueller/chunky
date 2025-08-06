@@ -26,7 +26,7 @@ import (
 )
 
 type Upload struct {
-	From   virt.FS
+	From   repos.ReadFS
 	To     repos.Repo
 	Cache  repos.FS
 	User   string
@@ -155,7 +155,7 @@ func (in *Upload) validate() (err error) {
 			err = errors.Join(err, errors.New("invalid concurrency"))
 		}
 	} else {
-		in.concurrency = defaultConcurrency
+		in.concurrency = DefaultConcurrency
 	}
 
 	return err
@@ -314,7 +314,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 
 // Open a file from the filesystem, handling symlinks. For symlinks, the
 // link target is the file data.
-func openReader(fsys virt.FS, path string, info fs.FileInfo) (io.Reader, error) {
+func openReader(fsys virt.FromFS, path string, info fs.FileInfo) (io.Reader, error) {
 	if info.Mode()&fs.ModeSymlink != 0 {
 		// If the file is a symlink, read the link target
 		link, err := fsys.Readlink(path)

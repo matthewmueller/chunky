@@ -13,6 +13,7 @@ import (
 
 type Tree = virt.Tree
 type File = virt.File
+type ReadFS = virt.FromFS
 type FS = virt.FS
 
 // Parse parses a repository path and returns a URL.

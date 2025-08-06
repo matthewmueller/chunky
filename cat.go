@@ -77,7 +77,7 @@ func (in *Cat) validate() (err error) {
 			err = errors.Join(err, errors.New("invalid concurrency"))
 		}
 	} else {
-		in.concurrency = defaultConcurrency
+		in.concurrency = DefaultConcurrency
 	}
 
 	return err

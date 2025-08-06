@@ -16,7 +16,8 @@ import (
 const kiB = 1024
 const miB = 1024 * kiB
 
-var defaultConcurrency = runtime.NumCPU() * 2
+// DefaultConcurrency returns the default number of concurrent downloads
+var DefaultConcurrency = runtime.NumCPU() * 2
 
 func New(log *slog.Logger) *Client {
 	return &Client{log}
