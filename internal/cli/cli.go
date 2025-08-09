@@ -158,7 +158,7 @@ func formatCommit(writer io.Writer, color color.Writer, commit *commits.Commit, 
 	relTime := humanize.Time(commit.CreatedAt())
 	tags := tagMap[commitId]
 	size := humanize.Bytes(commit.Size())
-	writer.Write([]byte(fmt.Sprintf("%s\t%s\t%s\t%s\t%+v\n", color.Green(commitId), color.Green(formatTags(tags)), size, commit.User(), color.Dim(relTime))))
+	writer.Write(fmt.Appendf(nil, "%s\t%s\t%s\t%s\t%+v\n", color.Green(commitId), color.Green(formatTags(tags)), size, commit.User(), color.Dim(relTime)))
 }
 
 func formatTag(writer io.Writer, color color.Writer, tag *tags.Tag, newest *commits.Commit) {

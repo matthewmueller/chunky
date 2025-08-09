@@ -115,10 +115,7 @@ func segmentData(data []byte, n int) [][]byte {
 	chunkSize := (len(data) + n - 1) / n
 	chunks := make([][]byte, 0, n)
 	for i := 0; i < len(data); i += chunkSize {
-		end := i + chunkSize
-		if end > len(data) {
-			end = len(data)
-		}
+		end := min(i+chunkSize, len(data))
 		chunks = append(chunks, data[i:end])
 	}
 	return chunks

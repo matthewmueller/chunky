@@ -201,6 +201,10 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		if err != nil {
 			return err
 		} else if d.IsDir() {
+			if ignore(fpath) {
+				log.Debug("ignoring directory", slog.String("path", fpath))
+				return fs.SkipDir
+			}
 			return nil
 		} else if ignore(fpath) {
 			log.Debug("ignoring file", slog.String("path", fpath))
@@ -218,19 +222,20 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 		// if the file path in the pack is different from the file path in the
 		// commit. To fix this, we also ensure the file paths are the same.
 		// TODO: We should add a way to alias files in the pack to other packs.
-		if commitFile, ok := cache.Get(fpath, fileHash); ok {
+		if cacheFile, ok := cache.Get(fpath, fileHash); ok {
 			log.Debug("file already in cache", slog.String("path", fpath))
-			commit.Add(commitFile)
+			commit.Add(cacheFile)
 			return nil
 		}
 
-		// Get the file info
-		info, err := in.From.Lstat(fpath)
+		// Get the file lstat
+		lstat, err := in.From.Lstat(fpath)
 		if err != nil {
 			return err
 		}
 
-		reader, err := openReader(in.From, fpath, info)
+		// Create a reader for the file data, handling symlinks
+		reader, err := openReader(in.From, fpath, lstat)
 		if err != nil {
 			return err
 		}
@@ -240,9 +245,9 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 			Reader:  reader,
 			Path:    fpath,
 			Hash:    fileHash,
-			Mode:    info.Mode(),
-			Size:    info.Size(),
-			ModTime: info.ModTime(),
+			Mode:    lstat.Mode(),
+			Size:    lstat.Size(),
+			ModTime: lstat.ModTime(),
 		})
 		if err != nil {
 			return err
@@ -258,7 +263,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 			Path:   fpath,
 			Id:     fileHash,
 			PackId: packId,
-			Size:   uint64(info.Size()),
+			Size:   uint64(lstat.Size()),
 		})
 
 		return nil

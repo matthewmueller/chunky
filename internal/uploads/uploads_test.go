@@ -21,7 +21,7 @@ const kib = 1024
 
 func makeData(amount int) []byte {
 	data := make([]byte, amount)
-	for i := 0; i < amount; i++ {
+	for i := range amount {
 		data[i] = byte(i % 256)
 	}
 	return data

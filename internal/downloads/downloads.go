@@ -2,7 +2,6 @@ package downloads
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -39,13 +38,12 @@ func (d *Downloader) Download(ctx context.Context, from repos.Repo, revision str
 	for _, files := range splitFiles(commit.Files(), d.Concurrency) {
 		eg, ctx := errgroup.WithContext(ctx)
 		for _, file := range files {
-			file := file
 			eg.Go(func() error {
 				return d.downloadFile(ctx, from, to, file)
 			})
 		}
 		if err := eg.Wait(); err != nil {
-			return fmt.Errorf("downloads: unable to download commit %q: %w", revision, err)
+			return fmt.Errorf("downloads: unable to download revision %q: %w", revision, err)
 		}
 	}
 	return nil
@@ -110,43 +108,7 @@ func (d *Downloader) downloadFile(ctx context.Context, from repos.Repo, to repos
 	}
 	defer file.Close()
 
-	// If we have the data upfront, write it to the file and return early
-	if fc.Data != nil || fc.Size == 0 {
-		// Check the hash
-		if sha256.Hash(fc.Data) != fc.Hash {
-			return fmt.Errorf("cli: hash mismatch for file %q", fc.Path)
-		}
-		if _, err := file.Write(fc.Data); err != nil {
-			return fmt.Errorf("cli: unable to write file %q: %w", fc.Path, err)
-		}
-		return nil
-	}
-
-	// Reconstruct the blob chunks into a single file
-	hash := sha256.New()
-	for _, ref := range fc.Refs {
-		pack, err := d.pr.Read(ctx, from, ref.Pack)
-		if err != nil {
-			return fmt.Errorf("cli: unable to download pack %q: %w", ref.Pack, err)
-		}
-		bc, ok := pack.Chunk(ref.Hash)
-		if !ok {
-			return fmt.Errorf("cli: unable to find chunk %q in pack %q", ref.Hash, ref.Pack)
-		}
-		if _, err := file.Write(bc.Data); err != nil {
-			return fmt.Errorf("cli: unable to write file %q: %w", fc.Path, err)
-		}
-		if _, err := hash.Write(bc.Data); err != nil {
-			return fmt.Errorf("cli: unable to hash blob %q: %w", ref.Hash, err)
-		}
-	}
-
-	// Check the hash
-	if hex.EncodeToString(hash.Sum(nil)) != fc.Hash {
-		return fmt.Errorf("cli: hash mismatch for file %q", fc.Path)
-	}
-
-	return nil
+	return d.writeFile(ctx, from, file, fc)
 }
 
 // Cat file data from a repo to a writer
@@ -175,11 +137,18 @@ func (d *Downloader) Cat(ctx context.Context, w io.Writer, repo repos.Repo, revi
 		return fmt.Errorf("cli: unable to find file %q in pack %q", cf.Path, cf.PackId)
 	}
 
+	return d.writeFile(ctx, repo, w, fc)
+}
+
+// Write file data to a writer, downloading chunks as necessary and checking hashes
+func (d *Downloader) writeFile(ctx context.Context, repo repos.Repo, w io.Writer, fc *packs.Chunk) error {
+	hash := sha256.New(fc)
+
 	// If we have the data upfront, return the file early
 	if fc.Data != nil || fc.Size == 0 {
 		// Check the hash
-		if sha256.Hash(fc.Data) != fc.Hash {
-			return fmt.Errorf("cli: hash mismatch for file %q", fc.Path)
+		if hash.String() != fc.Hash {
+			return fmt.Errorf("cli: hash mismatch for file %q: expected %s, got %s", fc.Path, fc.Hash, hash.String())
 		}
 		if _, err := w.Write(fc.Data); err != nil {
 			return fmt.Errorf("cli: unable to write file %q: %w", fc.Path, err)
@@ -188,7 +157,6 @@ func (d *Downloader) Cat(ctx context.Context, w io.Writer, repo repos.Repo, revi
 	}
 
 	// Write the chunks one-by-one to the writer
-	hash := sha256.New()
 	for _, ref := range fc.Refs {
 		pack, err := d.pr.Read(ctx, repo, ref.Pack)
 		if err != nil {
@@ -201,14 +169,14 @@ func (d *Downloader) Cat(ctx context.Context, w io.Writer, repo repos.Repo, revi
 		if _, err := w.Write(bc.Data); err != nil {
 			return fmt.Errorf("cli: unable to write file %q: %w", fc.Path, err)
 		}
-		if _, err := hash.Write(bc.Data); err != nil {
+		if _, err := hash.Write(bc); err != nil {
 			return fmt.Errorf("cli: unable to hash blob %q: %w", ref.Hash, err)
 		}
 	}
 
 	// Check the hash
-	if hex.EncodeToString(hash.Sum(nil)) != fc.Hash {
-		return fmt.Errorf("cli: hash mismatch for file %q", fc.Path)
+	if hash.String() != fc.Hash {
+		return fmt.Errorf("cli: hash mismatch for chunked file %q: expected %s, got %s", fc.Path, fc.Hash, hash.String())
 	}
 
 	return nil
