@@ -1,3 +1,8 @@
+# 0.2.4 / 2025-08-09
+
+- add some sftp tests
+- ensure hashing takes into account file mode and size. modernize syntax
+
 # 0.2.3 / 2025-08-06
 
 - expose defaults concurrency and max chunk size
