@@ -208,7 +208,7 @@ func read(ctx context.Context, repo repos.Repo, path string) (*Commit, error) {
 func Read(ctx context.Context, repo repos.Repo, revision string) (*Commit, error) {
 	commitSha, err := resolveRevision(ctx, repo, revision)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("commits: unable to resolve revision %q: %w", revision, err)
 	}
 	return read(ctx, repo, path.Join("commits", commitSha))
 }

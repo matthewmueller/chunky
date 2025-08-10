@@ -278,46 +278,46 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 			close(uploadCh)
 			return err
 		}
+	}
 
-		// Upload any remaining files in the pack
-		if err := upload.Flush(ctx); err != nil {
-			close(uploadCh)
-			return err
-		}
+	// Upload any remaining files in the pack
+	if err := upload.Flush(ctx); err != nil {
+		close(uploadCh)
+		return err
+	}
 
-		// Add the commit to the tree
-		commitData, err := commit.Pack()
-		if err != nil {
-			close(uploadCh)
-			return err
-		}
+	// Add the commit to the tree
+	commitData, err := commit.Pack()
+	if err != nil {
+		close(uploadCh)
+		return err
+	}
+	uploadCh <- &repos.File{
+		Path:    path.Join("commits", commitId),
+		Data:    commitData,
+		Mode:    0644,
+		ModTime: createdAt,
+	}
+
+	// Add the commit to the cache
+	if err := cache.Set(commitId, commit); err != nil {
+		close(uploadCh)
+		return err
+	}
+
+	// Add the latest ref
+	uploadCh <- &repos.File{
+		Path: path.Join("tags", "latest"),
+		Data: []byte(commitId),
+		Mode: 0644,
+	}
+
+	// Tag the revision
+	for _, tag := range in.Tags {
 		uploadCh <- &repos.File{
-			Path:    path.Join("commits", commitId),
-			Data:    commitData,
-			Mode:    0644,
-			ModTime: createdAt,
-		}
-
-		// Add the commit to the cache
-		if err := cache.Set(commitId, commit); err != nil {
-			close(uploadCh)
-			return err
-		}
-
-		// Add the latest ref
-		uploadCh <- &repos.File{
-			Path: path.Join("tags", "latest"),
+			Path: path.Join("tags", tag),
 			Data: []byte(commitId),
 			Mode: 0644,
-		}
-
-		// Tag the revision
-		for _, tag := range in.Tags {
-			uploadCh <- &repos.File{
-				Path: fmt.Sprintf("tags/%s", tag),
-				Data: []byte(commitId),
-				Mode: 0644,
-			}
 		}
 	}
 
