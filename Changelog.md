@@ -1,3 +1,7 @@
+# 0.2.5 / 2025-08-10
+
+- add support for uploading specific subpaths
+
 # 0.2.4 / 2025-08-09
 
 - add some sftp tests
