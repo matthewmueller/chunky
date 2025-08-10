@@ -113,3 +113,68 @@ func TestLargeSmallFile(t *testing.T) {
 	is.Equal(stat.Mode(), fs.FileMode(0644))
 	is.True(stat.ModTime().After(modTime))
 }
+
+func TestPaths(t *testing.T) {
+	is := is.New(t)
+	log := logs.Default()
+	chky := chunky.New(log)
+	ctx := context.Background()
+
+	modTime := time.Now()
+	from := virt.Tree{
+		"sub/a.txt": &virt.File{
+			Data:    []byte("a"),
+			Mode:    0644,
+			ModTime: modTime,
+		},
+		"sub/b.txt": &virt.File{
+			Data:    []byte("b"),
+			Mode:    0644,
+			ModTime: modTime,
+		},
+		"c.txt": &virt.File{
+			Data:    []byte("c"),
+			Mode:    0644,
+			ModTime: modTime,
+		},
+		"d.txt": &virt.File{
+			Data:    []byte("d"),
+			Mode:    0644,
+			ModTime: modTime,
+		},
+	}
+	to := local.New(virt.OS(t.TempDir()))
+
+	err := chky.Upload(ctx, &chunky.Upload{
+		From:  from,
+		To:    to,
+		Cache: virt.OS(t.TempDir()),
+		Paths: []string{"sub", "d.txt"},
+	})
+	is.NoErr(err)
+
+	dir := t.TempDir()
+	err = chky.Download(ctx, &chunky.Download{
+		From:     to,
+		To:       virt.OS(dir),
+		Revision: "latest",
+	})
+	is.NoErr(err)
+
+	data, err := os.ReadFile(filepath.Join(dir, "sub", "a.txt"))
+	is.NoErr(err)
+	is.Equal(string(data), "a")
+
+	data, err = os.ReadFile(filepath.Join(dir, "sub", "b.txt"))
+	is.NoErr(err)
+	is.Equal(string(data), "b")
+
+	data, err = os.ReadFile(filepath.Join(dir, "c.txt"))
+	is.True(os.IsNotExist(err))
+	is.Equal(data, nil)
+
+	data, err = os.ReadFile(filepath.Join(dir, "d.txt"))
+	is.NoErr(err)
+	is.Equal(string(data), "d")
+
+}

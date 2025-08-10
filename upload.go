@@ -31,7 +31,8 @@ type Upload struct {
 	Cache  repos.FS
 	User   string
 	Tags   []string
-	Ignore func(path string) bool
+	Paths  []string
+	Ignore func(string) bool
 
 	// MaxPackSize is the maximum pack size (default: 32MiB)
 	MaxPackSize string
@@ -82,6 +83,11 @@ func (in *Upload) validate() (err error) {
 		} else if tag == "" {
 			err = errors.Join(err, errors.New("tag cannot be empty"))
 		}
+	}
+
+	// Default to the current directory
+	if len(in.Paths) == 0 {
+		in.Paths = []string{"."}
 	}
 
 	// Default to the .chunkyignore file
@@ -197,119 +203,121 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 
 	// Walk over the files, chunk them and add them to the file system we're going
 	// to upload. We'll also add each file to the commit object.
-	if err := fs.WalkDir(in.From, ".", func(fpath string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		} else if d.IsDir() {
-			if ignore(fpath) {
-				log.Debug("ignoring directory", slog.String("path", fpath))
-				return fs.SkipDir
+	for _, p := range in.Paths {
+		if err := fs.WalkDir(in.From, p, func(fpath string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			} else if d.IsDir() {
+				if ignore(fpath) {
+					log.Debug("ignoring directory", slog.String("path", fpath))
+					return fs.SkipDir
+				}
+				return nil
+			} else if ignore(fpath) {
+				log.Debug("ignoring file", slog.String("path", fpath))
+				return nil
 			}
-			return nil
-		} else if ignore(fpath) {
-			log.Debug("ignoring file", slog.String("path", fpath))
-			return nil
-		}
 
-		// Hash the file into a sha256 hash, this reads the file in chunks, rather
-		// than loading the entire file into memory.
-		fileHash, err := sha256.HashFile(in.From, fpath, in.maxChunkSize)
-		if err != nil {
-			return fmt.Errorf("unable to hash file %q: %w", fpath, err)
-		}
+			// Hash the file into a sha256 hash, this reads the file in chunks, rather
+			// than loading the entire file into memory.
+			fileHash, err := sha256.HashFile(in.From, fpath, in.maxChunkSize)
+			if err != nil {
+				return fmt.Errorf("unable to hash file %q: %w", fpath, err)
+			}
 
-		// Check if the file is already in the pack. This will duplicate content
-		// if the file path in the pack is different from the file path in the
-		// commit. To fix this, we also ensure the file paths are the same.
-		// TODO: We should add a way to alias files in the pack to other packs.
-		if cacheFile, ok := cache.Get(fpath, fileHash); ok {
-			log.Debug("file already in cache", slog.String("path", fpath))
-			commit.Add(cacheFile)
+			// Check if the file is already in the pack. This will duplicate content
+			// if the file path in the pack is different from the file path in the
+			// commit. To fix this, we also ensure the file paths are the same.
+			// TODO: We should add a way to alias files in the pack to other packs.
+			if cacheFile, ok := cache.Get(fpath, fileHash); ok {
+				log.Debug("file already in cache", slog.String("path", fpath))
+				commit.Add(cacheFile)
+				return nil
+			}
+
+			// Get the file lstat
+			lstat, err := in.From.Lstat(fpath)
+			if err != nil {
+				return err
+			}
+
+			// Create a reader for the file data, handling symlinks
+			reader, err := openReader(in.From, fpath, lstat)
+			if err != nil {
+				return err
+			}
+
+			// Add the file to the pack
+			packId, err := upload.Add(ctx, &uploads.File{
+				Reader:  reader,
+				Path:    fpath,
+				Hash:    fileHash,
+				Mode:    lstat.Mode(),
+				Size:    lstat.Size(),
+				ModTime: lstat.ModTime(),
+			})
+			if err != nil {
+				return err
+			}
+
+			log.Debug("added file to pack",
+				slog.String("path", fpath),
+				slog.String("pack_id", packId),
+			)
+
+			// Add the file to the commit
+			commit.Add(&commits.File{
+				Path:   fpath,
+				Id:     fileHash,
+				PackId: packId,
+				Size:   uint64(lstat.Size()),
+			})
+
 			return nil
-		}
-
-		// Get the file lstat
-		lstat, err := in.From.Lstat(fpath)
-		if err != nil {
+		}); err != nil {
+			close(uploadCh)
 			return err
 		}
 
-		// Create a reader for the file data, handling symlinks
-		reader, err := openReader(in.From, fpath, lstat)
-		if err != nil {
+		// Upload any remaining files in the pack
+		if err := upload.Flush(ctx); err != nil {
+			close(uploadCh)
 			return err
 		}
 
-		// Add the file to the pack
-		packId, err := upload.Add(ctx, &uploads.File{
-			Reader:  reader,
-			Path:    fpath,
-			Hash:    fileHash,
-			Mode:    lstat.Mode(),
-			Size:    lstat.Size(),
-			ModTime: lstat.ModTime(),
-		})
+		// Add the commit to the tree
+		commitData, err := commit.Pack()
 		if err != nil {
+			close(uploadCh)
 			return err
 		}
-
-		log.Debug("added file to pack",
-			slog.String("path", fpath),
-			slog.String("pack_id", packId),
-		)
-
-		// Add the file to the commit
-		commit.Add(&commits.File{
-			Path:   fpath,
-			Id:     fileHash,
-			PackId: packId,
-			Size:   uint64(lstat.Size()),
-		})
-
-		return nil
-	}); err != nil {
-		close(uploadCh)
-		return err
-	}
-
-	// Upload any remaining files in the pack
-	if err := upload.Flush(ctx); err != nil {
-		close(uploadCh)
-		return err
-	}
-
-	// Add the commit to the tree
-	commitData, err := commit.Pack()
-	if err != nil {
-		close(uploadCh)
-		return err
-	}
-	uploadCh <- &repos.File{
-		Path:    path.Join("commits", commitId),
-		Data:    commitData,
-		Mode:    0644,
-		ModTime: createdAt,
-	}
-
-	// Add the commit to the cache
-	if err := cache.Set(commitId, commit); err != nil {
-		close(uploadCh)
-		return err
-	}
-
-	// Add the latest ref
-	uploadCh <- &repos.File{
-		Path: path.Join("tags", "latest"),
-		Data: []byte(commitId),
-		Mode: 0644,
-	}
-
-	// Tag the revision
-	for _, tag := range in.Tags {
 		uploadCh <- &repos.File{
-			Path: fmt.Sprintf("tags/%s", tag),
+			Path:    path.Join("commits", commitId),
+			Data:    commitData,
+			Mode:    0644,
+			ModTime: createdAt,
+		}
+
+		// Add the commit to the cache
+		if err := cache.Set(commitId, commit); err != nil {
+			close(uploadCh)
+			return err
+		}
+
+		// Add the latest ref
+		uploadCh <- &repos.File{
+			Path: path.Join("tags", "latest"),
 			Data: []byte(commitId),
 			Mode: 0644,
+		}
+
+		// Tag the revision
+		for _, tag := range in.Tags {
+			uploadCh <- &repos.File{
+				Path: fmt.Sprintf("tags/%s", tag),
+				Data: []byte(commitId),
+				Mode: 0644,
+			}
 		}
 	}
 
