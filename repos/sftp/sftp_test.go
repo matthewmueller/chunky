@@ -69,12 +69,13 @@ func TestUploadDownload(t *testing.T) {
 
 	repo := sftp_repo.New(sftpClient, "")
 	chky := chunky.New(log)
-	err = chky.Upload(ctx, &chunky.Upload{
+	revision, err := chky.Upload(ctx, &chunky.Upload{
 		From:  from,
 		To:    repo,
 		Cache: virt.OS(t.TempDir()),
 	})
 	is.NoErr(err)
+	is.True(revision != "")
 
 	// Check that the file exists on the SFTP server
 	toFs := virt.OS(t.TempDir())
@@ -114,12 +115,13 @@ func TestUploadDownloadSymlink(t *testing.T) {
 	cache := virt.OS(t.TempDir())
 
 	chky := chunky.New(log)
-	err = chky.Upload(ctx, &chunky.Upload{
+	revision, err := chky.Upload(ctx, &chunky.Upload{
 		From:  from,
 		To:    repo,
 		Cache: cache,
 	})
 	is.NoErr(err)
+	is.True(revision != "")
 
 	// Check that the file exists on the SFTP server
 	toFs := virt.OS(t.TempDir())
@@ -146,12 +148,13 @@ func TestUploadDownloadSymlink(t *testing.T) {
 	from["from.txt"].Mode = 0755 | fs.ModeSymlink
 
 	// Try again, with the cache
-	err = chky.Upload(ctx, &chunky.Upload{
+	revision, err = chky.Upload(ctx, &chunky.Upload{
 		From:  from,
 		To:    repo,
 		Cache: cache,
 	})
 	is.NoErr(err)
+	is.True(revision != "")
 
 	// Check that the file exists on the SFTP server
 	toFs = virt.OS(t.TempDir())

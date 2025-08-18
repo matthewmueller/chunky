@@ -18,16 +18,19 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/matthewmueller/chunky/internal/timeid"
 	"github.com/matthewmueller/chunky/repos"
+	"github.com/segmentio/ksuid"
 )
 
 func New(user string, createdAt time.Time) *Commit {
 	return &Commit{
+		id:        ksuid.New().String(),
 		user:      user,
 		createdAt: createdAt,
 	}
 }
 
 type Commit struct {
+	id        string
 	user      string
 	createdAt time.Time
 	size      uint64
@@ -63,6 +66,9 @@ func (c *Commit) Packs() (packs []*Pack) {
 }
 
 func (c *Commit) ID() string {
+	if c.id != "" {
+		return c.id
+	}
 	return timeid.Encode(c.createdAt)
 }
 
@@ -79,6 +85,7 @@ func (c *Commit) User() string {
 }
 
 type commitState struct {
+	ID        string    `json:"id,omitempty"`
 	User      string    `json:"user,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	Checksum  string    `json:"checksum,omitempty"`
@@ -119,6 +126,7 @@ func (c *Commit) state() *commitState {
 		checksum.Write([]byte(file.Id))
 	}
 	return &commitState{
+		ID:        c.id,
 		User:      c.user,
 		CreatedAt: c.createdAt,
 		Checksum:  hex.EncodeToString(checksum.Sum(nil)),
@@ -172,6 +180,7 @@ func Unpack(data []byte) (*Commit, error) {
 		return nil, err
 	}
 	return &Commit{
+		id:        state.ID,
 		user:      state.User,
 		createdAt: state.CreatedAt,
 		size:      state.Size,

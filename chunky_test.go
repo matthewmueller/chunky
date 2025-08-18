@@ -24,12 +24,13 @@ func TestSymlink(t *testing.T) {
 	from := virt.OS("testdata/symlink")
 	to := local.New(virt.OS(t.TempDir()))
 
-	err := chky.Upload(ctx, &chunky.Upload{
+	revision, err := chky.Upload(ctx, &chunky.Upload{
 		From:  from,
 		To:    to,
 		Cache: virt.OS(t.TempDir()),
 	})
 	is.NoErr(err)
+	is.True(revision != "")
 
 	dir := t.TempDir()
 	err = chky.Download(ctx, &chunky.Download{
@@ -80,12 +81,13 @@ func TestLargeSmallFile(t *testing.T) {
 	}
 	to := local.New(virt.OS(t.TempDir()))
 
-	err := chky.Upload(ctx, &chunky.Upload{
+	revision, err := chky.Upload(ctx, &chunky.Upload{
 		From:  from,
 		To:    to,
 		Cache: virt.OS(t.TempDir()),
 	})
 	is.NoErr(err)
+	is.True(revision != "")
 
 	dir := t.TempDir()
 	err = chky.Download(ctx, &chunky.Download{
@@ -145,13 +147,14 @@ func TestPaths(t *testing.T) {
 	}
 	to := local.New(virt.OS(t.TempDir()))
 
-	err := chky.Upload(ctx, &chunky.Upload{
+	revision, err := chky.Upload(ctx, &chunky.Upload{
 		From:  from,
 		To:    to,
 		Cache: virt.OS(t.TempDir()),
 		Paths: []string{"sub", "d.txt"},
 	})
 	is.NoErr(err)
+	is.True(revision != "")
 
 	dir := t.TempDir()
 	err = chky.Download(ctx, &chunky.Download{

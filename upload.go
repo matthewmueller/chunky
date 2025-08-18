@@ -78,9 +78,10 @@ func (in *Upload) validate() (err error) {
 
 	// Validate the tags
 	for _, tag := range in.Tags {
-		if tag == "latest" {
+		switch tag {
+		case "latest":
 			err = errors.Join(err, errors.New("tag cannot be 'latest'"))
-		} else if tag == "" {
+		case "":
 			err = errors.Join(err, errors.New("tag cannot be empty"))
 		}
 	}
@@ -168,9 +169,9 @@ func (in *Upload) validate() (err error) {
 }
 
 // Upload a directory to a repository
-func (c *Client) Upload(ctx context.Context, in *Upload) error {
+func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err error) {
 	if err := in.validate(); err != nil {
-		return err
+		return "", err
 	}
 
 	log := logs.Scope(c.log)
@@ -178,7 +179,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	// Download the latest commits from the cache
 	cache, err := caches.Download(ctx, in.To, in.Cache)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	ignore := in.Ignore
@@ -261,6 +262,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 			}
 
 			log.Debug("added file to pack",
+				slog.String("commit_id", commitId),
 				slog.String("path", fpath),
 				slog.String("pack_id", packId),
 			)
@@ -276,21 +278,21 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 			return nil
 		}); err != nil {
 			close(uploadCh)
-			return err
+			return "", err
 		}
 	}
 
 	// Upload any remaining files in the pack
 	if err := upload.Flush(ctx); err != nil {
 		close(uploadCh)
-		return err
+		return "", err
 	}
 
 	// Add the commit to the tree
 	commitData, err := commit.Pack()
 	if err != nil {
 		close(uploadCh)
-		return err
+		return "", err
 	}
 	uploadCh <- &repos.File{
 		Path:    path.Join("commits", commitId),
@@ -302,7 +304,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	// Add the commit to the cache
 	if err := cache.Set(commitId, commit); err != nil {
 		close(uploadCh)
-		return err
+		return "", err
 	}
 
 	// Add the latest ref
@@ -322,7 +324,11 @@ func (c *Client) Upload(ctx context.Context, in *Upload) error {
 	}
 
 	close(uploadCh)
-	return eg.Wait()
+	if err := eg.Wait(); err != nil {
+		return "", fmt.Errorf("unable to upload files: %w", err)
+	}
+
+	return commitId, nil
 }
 
 // Open a file from the filesystem, handling symlinks. For symlinks, the

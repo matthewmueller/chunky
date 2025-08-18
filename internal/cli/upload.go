@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky"
@@ -55,7 +56,7 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	return c.chunky.Upload(ctx, &chunky.Upload{
+	revision, err := c.chunky.Upload(ctx, &chunky.Upload{
 		From:        fsys,
 		To:          repo,
 		Tags:        in.Tags,
@@ -65,4 +66,10 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		LimitUpload: in.LimitUpload,
 		Concurrency: in.Concurrency,
 	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintln(c.Stdout, revision)
+	return nil
 }
