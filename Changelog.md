@@ -1,3 +1,7 @@
+# 0.2.6 / 2025-08-18
+
+- generate ksuids for new revisions and return the revision from the upload
+
 # 0.2.5 / 2025-08-10
 
 - add support for uploading specific subpaths
