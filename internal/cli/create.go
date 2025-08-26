@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 
 	"github.com/livebud/cli"
@@ -27,20 +28,26 @@ func (c *CLI) Create(ctx context.Context, in *Create) error {
 	if err != nil {
 		return err
 	}
+
 	// Create the repository
-	fileCh := make(chan *repos.File, 3)
-	fileCh <- &repos.File{
+	if err := repo.Upload(ctx, &repos.File{
 		Path: "commits",
 		Mode: fs.ModeDir | 0755,
+	}); err != nil {
+		return fmt.Errorf("cli: unable to create commits/ directory: %w", err)
 	}
-	fileCh <- &repos.File{
+	if err := repo.Upload(ctx, &repos.File{
 		Path: "packs",
 		Mode: fs.ModeDir | 0755,
+	}); err != nil {
+		return fmt.Errorf("cli: unable to create packs/ directory: %w", err)
 	}
-	fileCh <- &repos.File{
+	if err := repo.Upload(ctx, &repos.File{
 		Path: "tags",
 		Mode: fs.ModeDir | 0755,
+	}); err != nil {
+		return fmt.Errorf("cli: unable to create tags/ directory: %w", err)
 	}
-	close(fileCh)
-	return repo.Upload(ctx, fileCh)
+
+	return nil
 }

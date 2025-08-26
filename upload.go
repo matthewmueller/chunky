@@ -22,7 +22,6 @@ import (
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/logs"
 	"github.com/matthewmueller/virt"
-	"golang.org/x/sync/errgroup"
 )
 
 type Upload struct {
@@ -171,32 +170,25 @@ func (in *Upload) validate() (err error) {
 // Upload a directory to a repository
 func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err error) {
 	if err := in.validate(); err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid upload input: %w", err)
 	}
 
 	log := logs.Scope(c.log)
 
 	// Download the latest commits from the cache
+	now := time.Now()
 	cache, err := caches.Download(ctx, in.To, in.Cache)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
 	}
+	log.Debug("downloaded latest commits from the cache", slog.Duration("in", time.Since(now)))
 
 	ignore := in.Ignore
 	createdAt := time.Now().UTC()
 	commit := commits.New(in.User, createdAt)
 	commitId := commit.ID()
 
-	uploadCh := make(chan *repos.File, in.concurrency)
-	// Start the upload workers
-	eg := new(errgroup.Group)
-	for i := 0; i < in.concurrency; i++ {
-		eg.Go(func() error {
-			return in.To.Upload(ctx, uploadCh)
-		})
-	}
-
-	upload := uploads.New(log, uploadCh)
+	upload := uploads.New(log, in.To, in.concurrency)
 	upload.MaxPackSize = in.maxPackSize
 	upload.MinChunkSize = in.minChunkSize
 	upload.MaxChunkSize = in.maxChunkSize
@@ -239,13 +231,13 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 			// Get the file lstat
 			lstat, err := in.From.Lstat(fpath)
 			if err != nil {
-				return err
+				return fmt.Errorf("unable to lstat file %q: %w", fpath, err)
 			}
 
 			// Create a reader for the file data, handling symlinks
 			reader, err := openReader(in.From, fpath, lstat)
 			if err != nil {
-				return err
+				return fmt.Errorf("unable to open reader %q: %w", fpath, err)
 			}
 
 			// Add the file to the pack
@@ -258,7 +250,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 				ModTime: lstat.ModTime(),
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("unable to add file %q to pack: %w", fpath, err)
 			}
 
 			log.Debug("added file to pack",
@@ -277,55 +269,41 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 
 			return nil
 		}); err != nil {
-			close(uploadCh)
-			return "", err
+			return "", fmt.Errorf("unable to walk directory %q: %w", p, err)
 		}
 	}
 
-	// Upload any remaining files in the pack
+	// Upload any remaining files in the pack before committing
 	if err := upload.Flush(ctx); err != nil {
-		close(uploadCh)
-		return "", err
+		return "", fmt.Errorf("unable to flush pack before committing: %w", err)
 	}
 
-	// Add the commit to the tree
+	// Upload the commit file directly
 	commitData, err := commit.Pack()
 	if err != nil {
-		close(uploadCh)
-		return "", err
+		return "", fmt.Errorf("unable to pack commit %q: %w", commitId, err)
 	}
-	uploadCh <- &repos.File{
+	if err := upload.Direct(ctx, &repos.File{
 		Path:    path.Join("commits", commitId),
 		Data:    commitData,
 		Mode:    0644,
 		ModTime: createdAt,
+	}); err != nil {
+		return "", fmt.Errorf("unable to upload commit %q: %w", commitId, err)
 	}
 
-	// Add the commit to the cache
-	if err := cache.Set(commitId, commit); err != nil {
-		close(uploadCh)
-		return "", err
-	}
-
-	// Add the latest ref
-	uploadCh <- &repos.File{
-		Path: path.Join("tags", "latest"),
-		Data: []byte(commitId),
-		Mode: 0644,
-	}
-
-	// Tag the revision
-	for _, tag := range in.Tags {
-		uploadCh <- &repos.File{
+	// Upload the tags concurrently
+	tags := append([]string{"latest"}, in.Tags...)
+	tagFiles := make([]*repos.File, len(tags))
+	for i, tag := range tags {
+		tagFiles[i] = &repos.File{
 			Path: path.Join("tags", tag),
 			Data: []byte(commitId),
 			Mode: 0644,
 		}
 	}
-
-	close(uploadCh)
-	if err := eg.Wait(); err != nil {
-		return "", fmt.Errorf("unable to upload files: %w", err)
+	if err := upload.Direct(ctx, tagFiles...); err != nil {
+		return "", fmt.Errorf("unable to upload tags for commit %q: %w", commitId, err)
 	}
 
 	return commitId, nil

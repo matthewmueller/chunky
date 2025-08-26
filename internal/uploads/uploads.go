@@ -9,23 +9,22 @@ import (
 	"path"
 	"time"
 
+	"github.com/matthewmueller/chunky/internal/batch"
 	"github.com/matthewmueller/chunky/internal/chunker"
 	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/chunky/internal/rate"
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/logs"
-	"github.com/matthewmueller/virt"
 	"github.com/segmentio/ksuid"
 )
 
 const kiB = 1024
 const miB = 1024 * kiB
 
-func New(log *slog.Logger, uploadCh chan<- *repos.File) *Upload {
+func New(log *slog.Logger, repo repos.Repo, concurrency int) *Upload {
 	return &Upload{
-		log:      log,
-		uploadCh: uploadCh,
+		log:  log,
+		repo: repo,
 
 		MaxPackSize:  32 * miB,
 		MinChunkSize: 512 * kiB,
@@ -34,18 +33,25 @@ func New(log *slog.Logger, uploadCh chan<- *repos.File) *Upload {
 		// By default, don't limit the upload rate
 		Limiter: rate.New(0),
 
+		// Batch for controlling concurrency
+		batch: batch.New(concurrency),
+
 		current: newPackFile(),
 	}
 }
 
 type Upload struct {
-	log          *slog.Logger
-	uploadCh     chan<- *repos.File
+	log  *slog.Logger
+	repo repos.Repo
+
 	MaxPackSize  int
 	MinChunkSize int
 	MaxChunkSize int
 	Limiter      rate.Limiter
 	Concurrency  int
+
+	// Batch for controlling concurrency
+	batch *batch.Batch
 
 	// Current pack
 	current *packFile
@@ -72,12 +78,12 @@ type packFile struct {
 	ID string
 }
 
-func (p *packFile) File() (*virt.File, error) {
+func (p *packFile) File() (*repos.File, error) {
 	packData, err := p.Pack.Pack()
 	if err != nil {
 		return nil, err
 	}
-	return &virt.File{
+	return &repos.File{
 		Path:    path.Join("packs", p.ID),
 		Data:    packData,
 		Mode:    0644,
@@ -101,7 +107,7 @@ func (u *Upload) Add(ctx context.Context, file *File) (packId string, err error)
 			return "", fmt.Errorf("reading file data: %w", err)
 		}
 		fileChunk.Data = data
-		if err := u.maybeFlush(ctx, fileChunk.Length()); err != nil {
+		if err := u.maybeUpload(ctx, fileChunk.Length()); err != nil {
 			return "", fmt.Errorf("flushing pack: %w", err)
 		}
 		u.current.Add(fileChunk)
@@ -127,7 +133,7 @@ func (u *Upload) Add(ctx context.Context, file *File) (packId string, err error)
 
 		// If adding the blob chunk exceeds the max pack size, upload the current
 		// pack and start a new pack
-		if err := u.maybeFlush(ctx, blobChunk.Length()); err != nil {
+		if err := u.maybeUpload(ctx, blobChunk.Length()); err != nil {
 			return "", fmt.Errorf("flushing pack: %w", err)
 		}
 
@@ -140,7 +146,7 @@ func (u *Upload) Add(ctx context.Context, file *File) (packId string, err error)
 
 	// If adding the file chunk exceeds the max pack size, upload the current pack
 	// and start a new one
-	if err := u.maybeFlush(ctx, fileChunk.Length()); err != nil {
+	if err := u.maybeUpload(ctx, fileChunk.Length()); err != nil {
 		return "", fmt.Errorf("flushing pack: %w", err)
 	}
 	u.current.Add(fileChunk)
@@ -149,42 +155,84 @@ func (u *Upload) Add(ctx context.Context, file *File) (packId string, err error)
 }
 
 // Flush the current pack if adding the chunk would exceed the max pack size
-func (u *Upload) maybeFlush(ctx context.Context, chunkLength int) error {
+func (u *Upload) maybeUpload(ctx context.Context, chunkLength int) error {
 	if u.current.Length()+chunkLength < u.MaxPackSize {
 		return nil
 	}
-	return u.Flush(ctx)
+	return u.upload(ctx)
 }
 
-func (u *Upload) Flush(ctx context.Context) error {
+// Flush the current pack if adding the chunk would exceed the max pack size
+func (u *Upload) upload(ctx context.Context) error {
 	if u.current.Length() == 0 {
 		return nil
 	}
 
-	log := logs.Scope(u.log)
-
+	// Turn the current pack into a file
 	packFile, err := u.current.File()
 	if err != nil {
 		return err
 	}
 
+	// Add the pack file to the upload batch
+	if err := u.batch.Add(ctx, func(ctx context.Context) error {
+		return u.uploadFile(ctx, packFile)
+	}); err != nil {
+		return fmt.Errorf("uploads: unable to add pack file to upload batch: %w", err)
+	}
+
+	// Reset the current pack
+	u.current = newPackFile()
+
+	return nil
+}
+
+// Upload an individual file immediately
+func (u *Upload) uploadFile(ctx context.Context, file *repos.File) error {
 	now := time.Now()
-	if err := u.Limiter.Use(ctx, len(packFile.Data)); err != nil {
+
+	// Limit the upload rate
+	if err := u.Limiter.Use(ctx, len(file.Data)); err != nil {
 		return err
 	}
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case u.uploadCh <- packFile:
+	if err := u.repo.Upload(ctx, file); err != nil {
+		return fmt.Errorf("uploads: unable to upload pack file %q: %w", file.Path, err)
 	}
 
-	log.Debug("uploaded pack",
-		slog.String("path", packFile.Path),
-		slog.Int("size", len(packFile.Data)),
-		slog.Duration("time", time.Since(now)),
+	u.log.Debug("uploaded pack",
+		slog.String("path", file.Path),
+		slog.Int64("size", file.Size()),
+		slog.Duration("in", time.Since(now)),
 	)
 
-	u.current = newPackFile()
 	return nil
+}
+
+// Direct file uploads, bypassing the chunker
+func (u *Upload) Direct(ctx context.Context, files ...*repos.File) error {
+	for _, file := range files {
+		if err := u.batch.Add(ctx, func(ctx context.Context) error {
+			return u.uploadFile(ctx, file)
+		}); err != nil {
+			return fmt.Errorf("uploads: unable to add file to upload batch: %w", err)
+		}
+	}
+	return u.batch.Wait()
+}
+
+// Wait for current uploads to finish
+func (u *Upload) Wait() error {
+	return u.batch.Wait()
+}
+
+// Flush the current pack and wait for uploads to finish
+func (u *Upload) Flush(ctx context.Context) error {
+	// Upload whatever we have in the current pack
+	if err := u.upload(ctx); err != nil {
+		return err
+	}
+
+	// Wait for all uploads to finish
+	return u.batch.Wait()
 }

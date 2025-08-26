@@ -3,6 +3,7 @@ package caches
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -116,7 +117,7 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 		// Unpack the commit
 		commit, err := commits.Unpack(commitFile.Data)
 		if err != nil {
-			return err
+			return fmt.Errorf("caches: unable to unpack commit %s: %w", commitId, err)
 		}
 
 		// Write the commit to the cache

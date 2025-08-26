@@ -96,12 +96,6 @@ func (c *Client) Cat(ctx context.Context, in *Cat) error {
 		pr.Limiter = rate.New(in.limitDownload)
 	}
 
-	download := downloads.New(pr)
-
-	// Set the concurrency if provided
-	if in.Concurrency != nil {
-		download.Concurrency = *in.Concurrency
-	}
-
+	download := downloads.New(pr, in.concurrency)
 	return download.Cat(ctx, in.To, in.From, in.Revision, in.Path)
 }

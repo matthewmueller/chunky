@@ -169,15 +169,15 @@ func (c *Commit) File(path string) (*File, bool) {
 func Unpack(data []byte) (*Commit, error) {
 	reader, err := zstd.NewReader(bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("commits: unable to create zstd reader: %w", err)
 	}
 	dec := gob.NewDecoder(reader)
 	var state commitState
 	if err := dec.Decode(&state); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("commits: unable to decode commit: %w", err)
 	}
 	if err := state.Verify(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("commits: error verifying commit: %w", err)
 	}
 	return &Commit{
 		id:        state.ID,

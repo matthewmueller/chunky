@@ -92,10 +92,7 @@ func (c *Client) Download(ctx context.Context, in *Download) error {
 		pr.Limiter = rate.New(in.limitDownload)
 	}
 
-	downloader := downloads.New(pr)
-	if in.concurrency > 0 {
-		downloader.Concurrency = in.concurrency
-	}
+	downloader := downloads.New(pr, in.concurrency)
 
 	// Download the repo
 	return downloader.Download(ctx, in.From, in.Revision, in.To)

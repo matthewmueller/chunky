@@ -97,14 +97,14 @@ func (c *Client) TagRevision(ctx context.Context, in *TagRevision) error {
 	// Check that the commit exists
 	commit, err := commits.Read(ctx, in.Repo, in.Revision)
 	if err != nil {
-		return fmt.Errorf("cli: unable to read commit for %s: %w", in.Revision, err)
+		return fmt.Errorf("unable to read commit for %s: %w", in.Revision, err)
 	}
 
 	// If the tag already exists, append the commit to the end of the file
 	tag, err := tags.Read(ctx, in.Repo, in.Tag)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("cli: unable to read tag for %s: %w", in.Tag, err)
+			return fmt.Errorf("unable to read tag for %s: %w", in.Tag, err)
 		}
 		tag = &tags.Tag{
 			Name: in.Tag,
@@ -115,8 +115,5 @@ func (c *Client) TagRevision(ctx context.Context, in *TagRevision) error {
 	tag.Commits = append(tag.Commits, commit.ID())
 
 	// Upload the tag file
-	fromCh := make(chan *repos.File, 1)
-	fromCh <- tag.File()
-	close(fromCh)
-	return in.Repo.Upload(ctx, fromCh)
+	return in.Repo.Upload(ctx, tag.File())
 }

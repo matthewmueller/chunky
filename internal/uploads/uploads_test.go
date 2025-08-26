@@ -3,9 +3,9 @@ package uploads_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io/fs"
 	"path"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +14,9 @@ import (
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/internal/uploads"
 	"github.com/matthewmueller/chunky/repos"
+	"github.com/matthewmueller/chunky/repos/local"
 	"github.com/matthewmueller/logs"
+	"github.com/matthewmueller/virt"
 )
 
 const kib = 1024
@@ -27,35 +29,41 @@ func makeData(amount int) []byte {
 	return data
 }
 
-func pullPackFile(uploadCh <-chan *repos.File) (*repos.File, bool) {
-	select {
-	case file := <-uploadCh:
-		return file, true
-	default:
-		return nil, false
+func makeFile(path string, size int) *uploads.File {
+	data := makeData(size)
+	return &uploads.File{
+		Reader:  bytes.NewReader(data),
+		Path:    "test.txt",
+		Hash:    sha256.Hash(data),
+		Mode:    0644,
+		Size:    int64(len(data)),
+		ModTime: time.Now(),
 	}
 }
 
 func TestEmpty(t *testing.T) {
 	ctx := context.Background()
 	is := is.New(t)
-	uploadCh := make(chan *repos.File, 1)
-	upload := uploads.New(logs.Discard(), uploadCh)
+	dir := t.TempDir()
+	fsys := virt.OS(dir)
+	repo := local.New(fsys)
+	upload := uploads.New(logs.Discard(), repo, 1)
 	upload.MaxPackSize = 8 * kib
 	upload.MinChunkSize = 1 * kib
 	upload.MaxChunkSize = 2 * kib
 	is.NoErr(upload.Flush(ctx))
-	file, ok := pullPackFile(uploadCh)
-	is.True(!ok)
-	is.Equal(file, nil)
+	des, err := fs.ReadDir(fsys, "packs")
+	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(len(des), 0)
 }
 
 func TestOneFileNoChunks(t *testing.T) {
 	ctx := context.Background()
 	is := is.New(t)
-	uploadCh := make(chan *repos.File, 1)
-
-	upload := uploads.New(logs.Discard(), uploadCh)
+	dir := t.TempDir()
+	fsys := virt.OS(dir)
+	repo := local.New(fsys)
+	upload := uploads.New(logs.Discard(), repo, 1)
 	upload.MaxPackSize = 8 * kib
 	upload.MinChunkSize = 1 * kib
 	upload.MaxChunkSize = 2 * kib
@@ -75,21 +83,27 @@ func TestOneFileNoChunks(t *testing.T) {
 	is.True(packId != "")
 
 	// There shouldn't have been a file uploaded yet because the pack is not full
-	file, ok := pullPackFile(uploadCh)
-	is.True(!ok)
-	is.Equal(file, nil)
+	des, err := fs.ReadDir(fsys, "packs")
+	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(len(des), 0)
 
 	// Close the upload
 	err = upload.Flush(ctx)
 	is.NoErr(err)
 
-	file, ok = pullPackFile(uploadCh)
-	is.True(ok)
-	is.Equal(file.Path, path.Join("packs", packId))
-	is.Equal(file.Mode, fs.FileMode(0644))
-	is.True(!file.ModTime.Equal(modTime))
-	is.True(len(file.Data) < upload.MaxPackSize)
-	pack, err := packs.Unpack(file.Data)
+	des, err = fs.ReadDir(fsys, "packs")
+	is.NoErr(err)
+	is.Equal(len(des), 1)
+
+	stat, err := fsys.Stat(path.Join("packs", packId))
+	is.NoErr(err)
+	is.Equal(stat.Mode(), fs.FileMode(0644))
+	is.True(!stat.ModTime().Equal(modTime))
+
+	packData, err := fs.ReadFile(fsys, path.Join("packs", packId))
+	is.NoErr(err)
+	is.True(len(packData) < upload.MaxPackSize)
+	pack, err := packs.Unpack(packData)
 	is.NoErr(err)
 	is.True(pack != nil)
 	is.Equal(len(pack.Chunks()), 1)
@@ -109,9 +123,11 @@ func TestOneFileNoChunks(t *testing.T) {
 func TestOneFileOneChunk(t *testing.T) {
 	ctx := context.Background()
 	is := is.New(t)
-	uploadCh := make(chan *repos.File, 1)
 
-	upload := uploads.New(logs.Discard(), uploadCh)
+	dir := t.TempDir()
+	fsys := virt.OS(dir)
+	repo := local.New(fsys)
+	upload := uploads.New(logs.Discard(), repo, 1)
 	upload.MaxPackSize = 8 * kib
 	upload.MinChunkSize = 512
 	upload.MaxChunkSize = 1 * kib
@@ -131,21 +147,23 @@ func TestOneFileOneChunk(t *testing.T) {
 	is.True(packId != "")
 
 	// There shouldn't have been a file uploaded yet because the pack is not full
-	file, ok := pullPackFile(uploadCh)
-	is.True(!ok)
-	is.Equal(file, nil)
+	des, err := fs.ReadDir(fsys, "packs")
+	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(len(des), 0)
 
 	// Close the upload
 	err = upload.Flush(ctx)
 	is.NoErr(err)
 
-	file, ok = pullPackFile(uploadCh)
-	is.True(ok)
-	is.Equal(file.Path, path.Join("packs", packId))
-	is.Equal(file.Mode, fs.FileMode(0644))
-	is.True(!file.ModTime.Equal(modTime))
-	is.True(len(file.Data) < upload.MaxPackSize)
-	pack, err := packs.Unpack(file.Data)
+	stat, err := fsys.Stat(path.Join("packs", packId))
+	is.NoErr(err)
+	is.Equal(stat.Mode(), fs.FileMode(0644))
+	is.True(!stat.ModTime().Equal(modTime))
+
+	packData, err := fs.ReadFile(fsys, path.Join("packs", packId))
+	is.NoErr(err)
+	is.True(len(packData) < upload.MaxPackSize)
+	pack, err := packs.Unpack(packData)
 	is.NoErr(err)
 	is.True(pack != nil)
 	is.Equal(len(pack.Chunks()), 2)
@@ -167,9 +185,11 @@ func TestOneFileOneChunk(t *testing.T) {
 func TestOneFileTwoChunks(t *testing.T) {
 	ctx := context.Background()
 	is := is.New(t)
-	uploadCh := make(chan *repos.File, 1)
 
-	upload := uploads.New(logs.Discard(), uploadCh)
+	dir := t.TempDir()
+	fsys := virt.OS(dir)
+	repo := local.New(fsys)
+	upload := uploads.New(logs.Discard(), repo, 1)
 	upload.MaxPackSize = 8 * kib
 	upload.MinChunkSize = 512
 	upload.MaxChunkSize = 1 * kib
@@ -189,25 +209,27 @@ func TestOneFileTwoChunks(t *testing.T) {
 	is.True(packId != "")
 
 	// There shouldn't have been a file uploaded yet because the pack is not full
-	file, ok := pullPackFile(uploadCh)
-	is.True(!ok)
-	is.Equal(file, nil)
+	des, err := fs.ReadDir(fsys, "packs")
+	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(len(des), 0)
 
 	// Flush the upload
 	err = upload.Flush(ctx)
 	is.NoErr(err)
 
-	file, ok = pullPackFile(uploadCh)
-	is.True(ok)
-	is.Equal(file.Path, path.Join("packs", packId))
-	is.Equal(file.Mode, fs.FileMode(0644))
-	is.True(!file.ModTime.Equal(modTime))
-	is.True(len(file.Data) < upload.MaxPackSize)
+	stat, err := fsys.Stat(path.Join("packs", packId))
+	is.NoErr(err)
+	is.Equal(stat.Mode(), fs.FileMode(0644))
+	is.True(!stat.ModTime().Equal(modTime))
 
-	pack, err := packs.Unpack(file.Data)
+	packData, err := fs.ReadFile(fsys, path.Join("packs", packId))
+	is.NoErr(err)
+	is.True(len(packData) < upload.MaxPackSize)
+	pack, err := packs.Unpack(packData)
 	is.NoErr(err)
 	is.True(pack != nil)
 	is.Equal(len(pack.Chunks()), 3)
+
 	// First file chunk
 	fchunk, ok := pack.Chunk("test.txt")
 	is.True(ok)
@@ -236,9 +258,11 @@ func TestOneFileTwoChunks(t *testing.T) {
 func TestThreeFilesTwoPacks(t *testing.T) {
 	ctx := context.Background()
 	is := is.New(t)
-	uploadCh := make(chan *repos.File, 2)
 
-	upload := uploads.New(logs.Discard(), uploadCh)
+	dir := t.TempDir()
+	fsys := virt.OS(dir)
+	repo := local.New(fsys)
+	upload := uploads.New(logs.Discard(), repo, 1)
 	upload.MaxPackSize = 3 * kib
 	upload.MinChunkSize = 512
 	upload.MaxChunkSize = 1 * kib
@@ -257,9 +281,9 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	is.True(onePackId != "")
 
 	// There shouldn't have been a file uploaded yet because the pack is not full
-	packFile, ok := pullPackFile(uploadCh)
-	is.True(!ok)
-	is.Equal(packFile, nil)
+	des, err := fs.ReadDir(fsys, "packs")
+	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(len(des), 0)
 
 	twoData := makeData(1 * kib)
 	twoModTime := time.Now()
@@ -291,18 +315,26 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 	is.True(twoPackId != threePackId)
 
 	// There should have been a pack uploaded at this point
-	firstPackFile, ok := pullPackFile(uploadCh)
-	is.True(ok)
-	is.Equal(firstPackFile.Path, path.Join("packs", onePackId))
-	is.Equal(firstPackFile.Mode, fs.FileMode(0644))
-	is.True(!firstPackFile.ModTime.Equal(oneModTime))
-	is.True(!firstPackFile.ModTime.Equal(twoModTime))
-	is.True(len(firstPackFile.Data) < upload.MaxPackSize)
-	firstPack, err := packs.Unpack(firstPackFile.Data)
+	is.NoErr(upload.Wait())
+	des, err = fs.ReadDir(fsys, "packs")
+	is.NoErr(err)
+	is.Equal(len(des), 1)
+
+	firstPackStat, err := fsys.Stat(path.Join("packs", onePackId))
+	is.NoErr(err)
+	is.Equal(firstPackStat.Mode(), fs.FileMode(0644))
+	is.True(!firstPackStat.ModTime().Equal(oneModTime))
+	is.True(!firstPackStat.ModTime().Equal(twoModTime))
+
+	firstPackData, err := fs.ReadFile(fsys, path.Join("packs", onePackId))
+	is.NoErr(err)
+	is.True(len(firstPackData) < upload.MaxPackSize)
+
+	firstPack, err := packs.Unpack(firstPackData)
 	is.NoErr(err)
 	is.True(firstPack != nil)
-
 	is.Equal(len(firstPack.Chunks()), 4)
+
 	// First chunk
 	chunk, ok := firstPack.Chunk("one.txt")
 	is.True(ok)
@@ -340,26 +372,30 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 
 	// There shouldn't have been an addition file uploaded yet because the second
 	// pack is not full
-	packFile, ok = pullPackFile(uploadCh)
-	is.True(!ok)
-	is.Equal(packFile, nil)
+	is.NoErr(upload.Wait())
+	des, err = fs.ReadDir(fsys, "packs")
+	is.NoErr(err)
+	is.Equal(len(des), 1)
 
 	// Flush the upload
 	err = upload.Flush(ctx)
 	is.NoErr(err)
 
 	// Pull the second pack
-	secondPackFile, ok := pullPackFile(uploadCh)
-	is.True(ok)
-	is.Equal(secondPackFile.Path, path.Join("packs", threePackId))
-	is.Equal(secondPackFile.Mode, fs.FileMode(0644))
-	is.True(!secondPackFile.ModTime.Equal(threeModTime))
-	is.True(len(secondPackFile.Data) < upload.MaxPackSize)
-	secondPack, err := packs.Unpack(secondPackFile.Data)
+	secondPackStat, err := fsys.Stat(path.Join("packs", threePackId))
+	is.NoErr(err)
+	is.Equal(secondPackStat.Mode(), fs.FileMode(0644))
+	is.True(!secondPackStat.ModTime().Equal(threeModTime))
+
+	secondPackData, err := fs.ReadFile(fsys, path.Join("packs", threePackId))
+	is.NoErr(err)
+	is.True(len(secondPackData) < upload.MaxPackSize)
+
+	secondPack, err := packs.Unpack(secondPackData)
 	is.NoErr(err)
 	is.True(secondPack != nil)
-
 	is.Equal(len(secondPack.Chunks()), 3)
+
 	// First file chunk
 	fchunk, ok := secondPack.Chunk("three.txt")
 	is.True(ok)
@@ -387,9 +423,10 @@ func TestThreeFilesTwoPacks(t *testing.T) {
 func TestBigFileThreePacks(t *testing.T) {
 	ctx := context.Background()
 	is := is.New(t)
-	uploadCh := make(chan *repos.File, 3)
 
-	upload := uploads.New(logs.Discard(), uploadCh)
+	fsys := virt.OS(t.TempDir())
+	repo := local.New(fsys)
+	upload := uploads.New(logs.Discard(), repo, 1)
 	upload.MaxPackSize = 4 * kib
 	upload.MinChunkSize = 512
 	upload.MaxChunkSize = 2 * kib
@@ -408,59 +445,93 @@ func TestBigFileThreePacks(t *testing.T) {
 	is.NoErr(err)
 	is.True(packId != "")
 
-	// There should have been a pack uploaded at this point
-	firstPackFile, ok := pullPackFile(uploadCh)
-	is.True(ok)
-	is.Equal(firstPackFile.Mode, fs.FileMode(0644))
-	is.True(len(firstPackFile.Data) < upload.MaxPackSize)
-	firstPack, err := packs.Unpack(firstPackFile.Data)
-	is.NoErr(err)
-	is.True(firstPack != nil)
-	is.Equal(len(firstPack.Chunks()), 1)
+	// Wait for current uploads to finish
+	is.NoErr(upload.Wait())
 
-	// Second pack
-	secondPackFile, ok := pullPackFile(uploadCh)
-	is.True(ok)
-	is.Equal(secondPackFile.Mode, fs.FileMode(0644))
-	is.True(len(secondPackFile.Data) < upload.MaxPackSize)
-	secondPack, err := packs.Unpack(secondPackFile.Data)
+	des, err := fs.ReadDir(fsys, "packs")
 	is.NoErr(err)
-	is.True(secondPack != nil)
-	is.Equal(len(secondPack.Chunks()), 1)
+	is.Equal(len(des), 3)
 
-	// Third pack
-	thirdPackFile, ok := pullPackFile(uploadCh)
-	is.True(ok)
-	is.Equal(thirdPackFile.Mode, fs.FileMode(0644))
-	is.True(len(thirdPackFile.Data) < upload.MaxPackSize)
-	thirdPack, err := packs.Unpack(thirdPackFile.Data)
-	is.NoErr(err)
-	is.True(thirdPack != nil)
-	is.Equal(len(thirdPack.Chunks()), 1)
+	seen := map[string]bool{}
+	for _, de := range des {
+		seen[de.Name()] = true
+		stat, err := fsys.Stat(path.Join("packs", de.Name()))
+		is.NoErr(err)
+		is.Equal(stat.Mode(), fs.FileMode(0644))
 
-	// Ensure no more packs are uploaded
-	packFile, ok := pullPackFile(uploadCh)
-	is.True(!ok)
-	is.Equal(packFile, nil)
+		packData, err := fs.ReadFile(fsys, path.Join("packs", de.Name()))
+		is.NoErr(err)
+		is.True(len(packData) < upload.MaxPackSize)
+
+		pack, err := packs.Unpack(packData)
+		is.NoErr(err)
+		is.True(pack != nil)
+		is.Equal(len(pack.Chunks()), 1)
+	}
 
 	// Flush the upload
 	err = upload.Flush(ctx)
 	is.NoErr(err)
 
-	// Fourth pack
-	fourthPackFile, ok := pullPackFile(uploadCh)
-	is.True(ok)
-	is.Equal(fourthPackFile.Mode, fs.FileMode(0644))
-	is.True(len(fourthPackFile.Data) < upload.MaxPackSize)
-	fourthPack, err := packs.Unpack(fourthPackFile.Data)
+	des, err = fs.ReadDir(fsys, "packs")
 	is.NoErr(err)
-	is.True(fourthPack != nil)
-	is.Equal(len(fourthPack.Chunks()), 2)
+	is.Equal(len(des), 4)
 
-	is.True(firstPackFile.Path != secondPackFile.Path)
-	is.True(secondPackFile.Path != thirdPackFile.Path)
-	is.True(thirdPackFile.Path != fourthPackFile.Path)
+	// Get the fourth pack
+	for _, de := range des {
+		if seen[de.Name()] {
+			continue
+		}
+		stat, err := fsys.Stat(path.Join("packs", de.Name()))
+		is.NoErr(err)
+		is.Equal(stat.Mode(), fs.FileMode(0644))
 
-	// Ensure the returned pack id points to pack with the file chunk
-	is.Equal(packId, strings.TrimPrefix(fourthPackFile.Path, "packs/"))
+		packData, err := fs.ReadFile(fsys, path.Join("packs", de.Name()))
+		is.NoErr(err)
+		is.True(len(packData) < upload.MaxPackSize)
+
+		pack, err := packs.Unpack(packData)
+		is.NoErr(err)
+		is.True(pack != nil)
+		is.Equal(len(pack.Chunks()), 2)
+	}
+}
+
+type slowRepo struct {
+	*local.Repo
+}
+
+func (s *slowRepo) Upload(ctx context.Context, file *repos.File) error {
+	time.Sleep(100 * time.Millisecond)
+	return s.Repo.Upload(ctx, file)
+}
+
+func TestConcurrency(t *testing.T) {
+	ctx := context.Background()
+	is := is.New(t)
+
+	fsys := virt.OS(t.TempDir())
+	repo := &slowRepo{local.New(fsys)}
+	upload := uploads.New(logs.Discard(), repo, 3)
+	upload.MaxPackSize = 2 * kib
+	upload.MinChunkSize = 512
+	upload.MaxChunkSize = 1 * kib
+
+	now := time.Now()
+	pid, err := upload.Add(ctx, makeFile("one.txt", 1*kib))
+	is.True(pid != "")
+	is.NoErr(err)
+	pid, err = upload.Add(ctx, makeFile("two.txt", 1*kib))
+	is.True(pid != "")
+	is.NoErr(err)
+	pid, err = upload.Add(ctx, makeFile("three.txt", 1*kib))
+	is.True(pid != "")
+	is.NoErr(err)
+
+	// Flush the upload
+	is.NoErr(upload.Flush(ctx))
+
+	// Ensure that the uploads took less than 300ms, which means they were done
+	// concurrently
+	is.True(time.Since(now) < 300*time.Millisecond)
 }

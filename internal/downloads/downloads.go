@@ -9,55 +9,48 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/matthewmueller/chunky/internal/batch"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/packs"
 	"github.com/matthewmueller/chunky/internal/sha256"
 	"github.com/matthewmueller/chunky/repos"
-	"golang.org/x/sync/errgroup"
 )
 
-func New(pr packs.Reader) *Downloader {
+func New(pr packs.Reader, concurrency int) *Downloader {
 	return &Downloader{
-		pr: pr,
+		pr:    pr,
+		batch: batch.New(concurrency),
 	}
 }
 
 type Downloader struct {
-	pr          packs.Reader
-	Concurrency int
+	pr    packs.Reader
+	batch *batch.Batch
 }
 
 // Download a revision from a repo to a filesystem
 func (d *Downloader) Download(ctx context.Context, from repos.Repo, revision string, to repos.FS) error {
+	// Read the commit at the revision
 	commit, err := commits.Read(ctx, from, revision)
 	if err != nil {
 		return fmt.Errorf("downloads: unable to load commit %q: %w", revision, err)
 	}
-	// Download the files concurrently in batches based on the number of CPUs
-	// TODO: consider simplifying with buffered channels
-	for _, files := range splitFiles(commit.Files(), d.Concurrency) {
-		eg, ctx := errgroup.WithContext(ctx)
-		for _, file := range files {
-			eg.Go(func() error {
-				return d.downloadFile(ctx, from, to, file)
-			})
-		}
-		if err := eg.Wait(); err != nil {
-			return fmt.Errorf("downloads: unable to download revision %q: %w", revision, err)
-		}
-	}
-	return nil
-}
 
-func splitFiles(files []*commits.File, size int) [][]*commits.File {
-	if size == 0 {
-		return [][]*commits.File{files}
+	// Batch the downloads
+	for _, file := range commit.Files() {
+		if err := d.batch.Add(ctx, func(ctx context.Context) error {
+			return d.downloadFile(ctx, from, to, file)
+		}); err != nil {
+			return fmt.Errorf("downloads: unable to download file from batch %q: %w", file.Path, err)
+		}
 	}
-	var buckets [][]*commits.File
-	for i := 0; i < len(files); i += size {
-		buckets = append(buckets, files[i:min(i+size, len(files))])
+
+	// Wait for the downloads to finish
+	if err := d.batch.Wait(); err != nil {
+		return fmt.Errorf("downloads: unable to download revision %q: %w", revision, err)
 	}
-	return buckets
+
+	return nil
 }
 
 func (d *Downloader) downloadFile(ctx context.Context, from repos.Repo, to repos.FS, cf *commits.File) error {
