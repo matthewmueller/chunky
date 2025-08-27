@@ -1,3 +1,9 @@
+# 0.3.0 / 2025-08-26
+
+- switch from walking to readdir to speed up sftp operations
+- more graceful handling of old commits
+- simplify the Repo interface
+
 # 0.2.6 / 2025-08-18
 
 - generate ksuids for new revisions and return the revision from the upload
