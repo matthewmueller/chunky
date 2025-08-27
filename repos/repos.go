@@ -48,8 +48,8 @@ type Repo interface {
 	Upload(ctx context.Context, file *File) error
 	// Download paths from the repository to a filesystem
 	Download(ctx context.Context, path string) (*File, error)
-	// Walk the repository
-	Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error
+	// ReadDir reads a directory from the repository
+	ReadDir(dir string) ([]fs.DirEntry, error)
 	// Close the repository
 	Close() error
 }

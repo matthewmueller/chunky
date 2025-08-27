@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -234,21 +235,19 @@ func Read(ctx context.Context, repo repos.Repo, revision string) (*Commit, error
 }
 
 func ReadAll(ctx context.Context, repo repos.Repo) (commits []*Commit, err error) {
-	if err := repo.Walk(ctx, "commits", func(fpath string, de fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		} else if de.IsDir() {
-			return nil
-		}
+	des, err := repo.ReadDir("commits")
+	if err != nil {
+		return nil, fmt.Errorf("caches: unable to read commits directory: %w", err)
+	}
+	for _, de := range des {
+		fpath := filepath.Join("commits", de.Name())
 		commit, err := read(ctx, repo, fpath)
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("commits: unable to read commit %q: %w", fpath, err)
 		}
 		commits = append(commits, commit)
-		return nil
-	}); err != nil {
-		return nil, err
 	}
+	// Sort by newest first
 	sort.Slice(commits, func(i, j int) bool {
 		return commits[i].createdAt.After(commits[j].createdAt)
 	})

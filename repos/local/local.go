@@ -51,8 +51,8 @@ func (r *Repo) Download(ctx context.Context, path string) (*repos.File, error) {
 	return virt.From(r.fsys, path)
 }
 
-func (r *Repo) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error {
-	return fs.WalkDir(r.fsys, dir, fn)
+func (r *Repo) ReadDir(dir string) ([]fs.DirEntry, error) {
+	return fs.ReadDir(r.fsys, dir)
 }
 
 func (r *Repo) Close() error {

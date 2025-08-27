@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -124,29 +123,4 @@ func (c *Repo) downloadFile(path string) (*repos.File, error) {
 		Data: data,
 		Mode: fileInfo.Mode(),
 	}, nil
-}
-
-func (c *Repo) Walk(ctx context.Context, dir string, fn fs.WalkDirFunc) error {
-	walker := c.sftp.Walk(filepath.Join(c.dir, dir))
-	for walker.Step() {
-		if err := walker.Err(); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return fmt.Errorf("sftp: unable to walk %q: %w", dir, err)
-		}
-		info, err := c.sftp.Lstat(walker.Path())
-		if err != nil {
-			return fmt.Errorf("sftp: unable to lstat %q: %w", walker.Path(), err)
-		}
-		de := fs.FileInfoToDirEntry(info)
-		rel, err := filepath.Rel(c.dir, walker.Path())
-		if err != nil {
-			return fmt.Errorf("sftp: unable to get relative path: %w", err)
-		}
-		if err := fn(rel, de, nil); err != nil {
-			return err
-		}
-	}
-	return nil
 }

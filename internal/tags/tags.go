@@ -2,7 +2,7 @@ package tags
 
 import (
 	"context"
-	"io/fs"
+	"fmt"
 	"path"
 	"path/filepath"
 	"sort"
@@ -70,20 +70,16 @@ func Read(ctx context.Context, repo repos.Repo, name string) (*Tag, error) {
 
 // ReadAll reads all tags
 func ReadAll(ctx context.Context, repo repos.Repo) (tags []*Tag, err error) {
-	if err := repo.Walk(ctx, "tags", func(fpath string, de fs.DirEntry, err error) error {
+	des, err := repo.ReadDir("tags")
+	if err != nil {
+		return nil, fmt.Errorf("caches: unable to read commits directory: %w", err)
+	}
+	for _, de := range des {
+		tag, err := Read(ctx, repo, de.Name())
 		if err != nil {
-			return err
-		} else if de.IsDir() {
-			return nil
-		}
-		tag, err := Read(ctx, repo, filepath.Base(fpath))
-		if err != nil {
-			return err
+			return nil, fmt.Errorf("tags: unable to read tag %q: %w", de.Name(), err)
 		}
 		tags = append(tags, tag)
-		return nil
-	}); err != nil {
-		return nil, err
 	}
 	sort.Slice(tags, func(i, j int) bool {
 		return tags[i].Name < tags[j].Name
@@ -93,21 +89,17 @@ func ReadAll(ctx context.Context, repo repos.Repo) (tags []*Tag, err error) {
 
 func ReadMap(ctx context.Context, repo repos.Repo) (map[string][]*Tag, error) {
 	tags := map[string][]*Tag{}
-	if err := repo.Walk(ctx, "tags", func(fpath string, de fs.DirEntry, err error) error {
+	des, err := repo.ReadDir("tags")
+	if err != nil {
+		return nil, fmt.Errorf("caches: unable to read commits directory: %w", err)
+	}
+	for _, de := range des {
+		tag, err := Read(ctx, repo, de.Name())
 		if err != nil {
-			return err
-		} else if de.IsDir() {
-			return nil
-		}
-		tag, err := Read(ctx, repo, filepath.Base(fpath))
-		if err != nil {
-			return err
+			return nil, fmt.Errorf("tags: unable to read tag %q: %w", de.Name(), err)
 		}
 		commit := tag.Newest()
 		tags[commit] = append(tags[commit], tag)
-		return nil
-	}); err != nil {
-		return nil, err
 	}
 	return tags, nil
 }

@@ -101,16 +101,12 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 		remoteCommits[commitId] = false
 	}
 
-	if err := repo.Walk(ctx, "commits", func(fpath string, de fs.DirEntry, err error) error {
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return fs.SkipAll
-			}
-			return err
-		} else if de.IsDir() {
-			return nil
-		}
-
+	des, err := repo.ReadDir("commits")
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("caches: unable to read commits directory: %w", err)
+	}
+	for _, de := range des {
+		fpath := filepath.Join("commits", de.Name())
 		commitId := filepath.Base(fpath)
 		remoteCommits[commitId] = true
 
@@ -153,10 +149,6 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 
 		// Mark the commit as downloaded
 		c.localCommits[commitId] = commit
-
-		return nil
-	}); err != nil {
-		return err
 	}
 
 	// Remove any commits that are no longer in the repo
