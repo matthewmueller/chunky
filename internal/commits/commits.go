@@ -29,6 +29,17 @@ func New(user string, createdAt time.Time) *Commit {
 	}
 }
 
+// Invalid commit. This can occur when the commit is using an old format.
+func Invalid(id string) *Commit {
+	return &Commit{
+		id:        id,
+		user:      "",
+		createdAt: time.Time{},
+		size:      0,
+		files:     nil,
+	}
+}
+
 type Commit struct {
 	id        string
 	user      string

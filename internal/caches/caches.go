@@ -6,5 +6,4 @@ import (
 
 type Cache interface {
 	Get(path, hash string) (file *commits.File, ok bool)
-	Set(commitId string, commit *commits.Commit) error
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -13,9 +14,9 @@ import (
 )
 
 // Download the cache to the local filesystem
-func Download(ctx context.Context, from repos.Repo, to repos.FS) (*Local, error) {
+func Download(ctx context.Context, log *slog.Logger, from repos.Repo, to repos.FS) (*Local, error) {
 	// Load currently cached files
-	cache, err := Load(to)
+	cache, err := Load(log, to)
 	if err != nil {
 		return nil, err
 	}
@@ -27,8 +28,9 @@ func Download(ctx context.Context, from repos.Repo, to repos.FS) (*Local, error)
 }
 
 // Load from existing cache
-func Load(fsys repos.FS) (*Local, error) {
+func Load(log *slog.Logger, fsys repos.FS) (*Local, error) {
 	cache := &Local{
+		log,
 		fsys,
 		map[string]*commits.File{},
 		map[string]*commits.Commit{},
@@ -51,6 +53,7 @@ func Load(fsys repos.FS) (*Local, error) {
 		commit, err := commits.Unpack(data)
 		if err != nil {
 			if isCacheInvalid(err) {
+				log.Debug("removing invalid cache file", "file", commitId)
 				// Remove the invalid cache file
 				if err := fsys.RemoveAll(commitId); err != nil {
 					return nil, err
@@ -62,7 +65,7 @@ func Load(fsys repos.FS) (*Local, error) {
 		for _, file := range commit.Files() {
 			cache.files[cacheKey(file.Path, file.Id)] = file
 		}
-		cache.commits[commitId] = commit
+		cache.localCommits[commitId] = commit
 	}
 
 	return cache, nil
@@ -75,19 +78,27 @@ func isCacheInvalid(err error) bool {
 	return strings.HasPrefix(err.Error(), "gob: ")
 }
 
+func isRemoteInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "unable to decode commit")
+}
+
 type Local struct {
-	fsys    repos.FS
-	files   map[string]*commits.File   // path:hash -> pack_file
-	commits map[string]*commits.Commit // commit_id -> commit
+	log          *slog.Logger
+	fsys         repos.FS
+	files        map[string]*commits.File   // path:hash -> pack_file
+	localCommits map[string]*commits.Commit // commitId -> commit
 }
 
 var _ Cache = (*Local)(nil)
 
 // Download the latest commits
 func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
-	seen := map[string]bool{}
-	for commitId := range c.commits {
-		seen[commitId] = false
+	remoteCommits := map[string]bool{}
+	for commitId := range c.localCommits {
+		remoteCommits[commitId] = false
 	}
 
 	if err := repo.Walk(ctx, "commits", func(fpath string, de fs.DirEntry, err error) error {
@@ -101,10 +112,10 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 		}
 
 		commitId := filepath.Base(fpath)
-		seen[commitId] = true
+		remoteCommits[commitId] = true
 
 		// Skip if we already have the commit
-		if _, ok := c.commits[commitId]; ok {
+		if _, ok := c.localCommits[commitId]; ok {
 			return nil
 		}
 
@@ -113,15 +124,25 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 		if err != nil {
 			return err
 		}
+		commitData := commitFile.Data
 
 		// Unpack the commit
-		commit, err := commits.Unpack(commitFile.Data)
+		commit, err := commits.Unpack(commitData)
 		if err != nil {
-			return fmt.Errorf("caches: unable to unpack commit %s: %w", commitId, err)
+			if !isRemoteInvalid(err) {
+				return fmt.Errorf("caches: unable to unpack commit %s: %w", commitId, err)
+			}
+			// Skip the invalid commit file
+			c.log.Debug("skipping invalid remote commit file", "file", commitId)
+			commit = commits.Invalid(commitId)
+			commitData, err = commit.Pack()
+			if err != nil {
+				return fmt.Errorf("caches: unable to pack invalid commit %s: %w", commitId, err)
+			}
 		}
 
 		// Write the commit to the cache
-		if err := c.fsys.WriteFile(commitId, commitFile.Data, 0644); err != nil {
+		if err := c.fsys.WriteFile(commitId, commitData, 0644); err != nil {
 			return err
 		}
 
@@ -131,7 +152,7 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 		}
 
 		// Mark the commit as downloaded
-		c.commits[commitId] = commit
+		c.localCommits[commitId] = commit
 
 		return nil
 	}); err != nil {
@@ -139,18 +160,18 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 	}
 
 	// Remove any commits that are no longer in the repo
-	for commitId, ok := range seen {
+	for commitId, ok := range remoteCommits {
 		if ok {
 			continue
 		}
 		if err := c.fsys.RemoveAll(commitId); err != nil {
 			return err
 		}
-		commit := c.commits[commitId]
+		commit := c.localCommits[commitId]
 		for _, file := range commit.Files() {
 			delete(c.files, cacheKey(file.Path, file.Id))
 		}
-		delete(c.commits, commitId)
+		delete(c.localCommits, commitId)
 	}
 
 	return nil
@@ -159,31 +180,6 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 func (c *Local) Get(path, hash string) (file *commits.File, ok bool) {
 	file, ok = c.files[cacheKey(path, hash)]
 	return file, ok
-}
-
-func (c *Local) Set(commitId string, commit *commits.Commit) error {
-	// Skip if we already have the commit
-	if _, ok := c.commits[commitId]; ok {
-		return nil
-	}
-
-	// Pack the commit
-	data, err := commit.Pack()
-	if err != nil {
-		return err
-	}
-
-	// Write the commit to the cache
-	if err := c.fsys.WriteFile(commitId, data, 0644); err != nil {
-		return err
-	}
-
-	// Add the files to the cache
-	for _, file := range commit.Files() {
-		c.files[cacheKey(file.Path, file.Id)] = file
-	}
-	c.commits[commitId] = commit
-	return nil
 }
 
 func cacheKey(path, hash string) string {

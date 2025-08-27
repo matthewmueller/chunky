@@ -177,7 +177,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 
 	// Download the latest commits from the cache
 	now := time.Now()
-	cache, err := caches.Download(ctx, in.To, in.Cache)
+	cache, err := caches.Download(ctx, c.log, in.To, in.Cache)
 	if err != nil {
 		return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
 	}
