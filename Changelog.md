@@ -1,3 +1,7 @@
+# 0.4.0 / 2026-10-25
+
+- add an HTTP repo for uploading and downloading over HTTP
+
 # 0.3.0 / 2025-08-26
 
 - switch from walking to readdir to speed up sftp operations
