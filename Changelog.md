@@ -1,3 +1,7 @@
+# 0.5.0 / 2026-10-25
+
+- BREAKING: `http.New` now only takes the repo url. Set `repo.Client` to use a custom `http.Client`
+
 # 0.4.0 / 2026-10-25
 
 - add an HTTP repo for uploading and downloading over HTTP
