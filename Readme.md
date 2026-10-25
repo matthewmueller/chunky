@@ -122,6 +122,41 @@ Chunky also includes a programmatic API. For now, that's undocumented, but it sh
 
 You can also review the documentation on [go.dev](https://pkg.go.dev/github.com/matthewmueller/chunky).
 
+### Serving a repository over HTTP
+
+The `repos/http` package lets you upload and download over HTTP(S) instead of SFTP. It has two halves: `Handler` serves an existing repository from the remote machine and `New` connects to it.
+
+On the server, wrap the directory holding the repository and mount it in any HTTP server:
+
+```go
+import (
+	"net/http"
+
+	http_repo "github.com/matthewmueller/chunky/repos/http"
+	"github.com/matthewmueller/chunky/repos/local"
+	"github.com/matthewmueller/virt"
+)
+
+repo := local.New(virt.OS("/var/lib/my-repo"))
+http.Handle("/repo/", http.StripPrefix("/repo", http_repo.Handler(repo)))
+http.ListenAndServe(":8080", nil)
+```
+
+On the client, point the HTTP repository at that URL and use it like any other repository:
+
+```go
+repo := http_repo.New(http.DefaultClient, "https://example.com/repo")
+revision, err := chunky.New(logs.Default()).Upload(ctx, &chunky.Upload{
+	From:  virt.OS("."),
+	To:    repo,
+	Cache: virt.OS(cacheDir),
+})
+```
+
+`Handler` rejects paths that escape the repository and strips special mode bits (e.g. setuid) from uploads, but it does not authenticate requests. Add your own authentication and TLS in front of it.
+
+The HTTP repository is only available through the Go API for now. The CLI supports local and SFTP repositories.
+
 ## Similar Tools
 
 - **Git:** You need to use a Git extension to store large binaries and overall requires too much ceremony when you just want to sync a directory on a remote machine. You may also want to sync files in your `.gitignore` to production servers (e.g. compiled assets).
@@ -130,10 +165,11 @@ You can also review the documentation on [go.dev](https://pkg.go.dev/github.com/
 
 ## Adding New Repositories
 
-Chunky currently supports two repository backends:
+Chunky currently supports three repository backends:
 
 1. `Local`: Store your repository in your local filesystem
 2. `SFTP`: Store your repository on a remote server
+3. `HTTP`: Store your repository on a remote server that serves it with `http.Handler`
 
 I'd encourage you to contribute new repository backends to Chunky. The interface is quite straightforward to implement:
 
@@ -143,8 +179,8 @@ type Repo interface {
 	Upload(ctx context.Context, file *File) error
 	// Download paths from the repository to a filesystem
 	Download(ctx context.Context, path string) (*File, error)
-	// ReadDir reads a directory
-	ReadDir(ctx context.Context, dir string) ([]fs.DirEntry, error)
+	// ReadDir reads a directory from the repository
+	ReadDir(dir string) ([]fs.DirEntry, error)
 	// Close the repository
 	Close() error
 }
