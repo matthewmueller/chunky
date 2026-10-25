@@ -22,12 +22,13 @@ const modeHeader = "Chunky-Mode"
 
 // New creates a repository that reads and writes files served by Handler at
 // url
-func New(client *http.Client, url string) *Repo {
-	return &Repo{client, strings.TrimSuffix(url, "/")}
+func New(url string) *Repo {
+	return &Repo{http.DefaultClient, strings.TrimSuffix(url, "/")}
 }
 
 type Repo struct {
-	client *http.Client
+	// Client sends the requests (default: http.DefaultClient)
+	Client *http.Client
 	url    string
 }
 
@@ -104,7 +105,7 @@ type response struct {
 
 // do sends the request, mapping a missing file to fs.ErrNotExist
 func (r *Repo) do(req *http.Request) (*response, error) {
-	res, err := r.client.Do(req)
+	res, err := r.Client.Do(req)
 	if err != nil {
 		return nil, err
 	}

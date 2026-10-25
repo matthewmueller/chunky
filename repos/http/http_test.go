@@ -36,7 +36,8 @@ func TestUploadDownload(t *testing.T) {
 		"dir/c.txt": &virt.File{Data: []byte("c"), Mode: 0755},
 	}
 
-	repo := http_repo.New(server.Client(), server.URL+"/repo")
+	repo := http_repo.New(server.URL + "/repo")
+	repo.Client = server.Client()
 	cache := virt.OS(t.TempDir())
 	chky := chunky.New(log)
 	revision, err := chky.Upload(ctx, &chunky.Upload{
@@ -83,7 +84,8 @@ func TestNotExist(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
 	server := httpServer(t, t.TempDir())
-	repo := http_repo.New(server.Client(), server.URL+"/repo")
+	repo := http_repo.New(server.URL + "/repo")
+	repo.Client = server.Client()
 
 	_, err := repo.Download(ctx, "commits/missing")
 	is.True(errors.Is(err, fs.ErrNotExist))

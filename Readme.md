@@ -145,7 +145,7 @@ http.ListenAndServe(":8080", nil)
 On the client, point the HTTP repository at that URL and use it like any other repository:
 
 ```go
-repo := http_repo.New(http.DefaultClient, "https://example.com/repo")
+repo := http_repo.New("https://example.com/repo")
 revision, err := chunky.New(logs.Default()).Upload(ctx, &chunky.Upload{
 	From:  virt.OS("."),
 	To:    repo,
