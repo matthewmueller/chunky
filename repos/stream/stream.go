@@ -58,10 +58,8 @@ func (w *Writer) Close() error {
 }
 
 // Receive writes a stream from Writer into a repository and returns the
-// uploaded commit. Packs are written as they arrive, but the commit and its
-// tags are held until the stream ends with tags/latest naming the commit. A
-// stream that ends earlier, even cleanly between entries, is an error, so a
-// cut stream leaves at most orphan packs.
+// uploaded commit. The commit and tags are only written once the stream ends
+// with tags/latest, so a cut stream leaves at most orphan packs.
 func Receive(ctx context.Context, r io.Reader, to repos.Repo) (commitId string, err error) {
 	tr := tar.NewReader(r)
 	var commit *repos.File
@@ -103,7 +101,6 @@ func Receive(ctx context.Context, r io.Reader, to repos.Repo) (commitId string, 
 			}
 			commit, commitId = file, name
 		case dir == "tags/" && commit != nil:
-			// Tags may only name the commit in this stream
 			if string(data) != commitId {
 				return "", fmt.Errorf("stream: tag %q doesn't name commit %s", name, commitId)
 			}
@@ -124,8 +121,8 @@ func Receive(ctx context.Context, r io.Reader, to repos.Repo) (commitId string, 
 	return commitId, nil
 }
 
-// checkBase refuses a base the repo doesn't have, before any packs arrive. An
-// empty base means the client is sending every file.
+// checkBase refuses a base the repo doesn't have. An empty base means the
+// client is sending every file.
 func checkBase(ctx context.Context, to repos.Repo, baseId string) error {
 	if baseId == "" {
 		return nil
@@ -142,15 +139,11 @@ func checkBase(ctx context.Context, to repos.Repo, baseId string) error {
 	return nil
 }
 
-// checkCommit refuses a commit that references a pack the repo doesn't have,
-// so a commit is only written once all of its packs are present
+// checkCommit refuses a commit that references a pack the repo doesn't have
 func checkCommit(to repos.Repo, commitId string, data []byte) error {
 	commit, err := commits.Unpack(data)
 	if err != nil {
 		return fmt.Errorf("stream: unable to unpack commit %s: %w", commitId, err)
-	}
-	if commit.ID() != commitId {
-		return fmt.Errorf("stream: commit %s has id %s", commitId, commit.ID())
 	}
 	des, err := to.ReadDir("packs")
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

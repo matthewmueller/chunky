@@ -18,12 +18,11 @@ import (
 
 func packCommit(t testing.TB, filePath string) (id string, data []byte) {
 	t.Helper()
+	is := is.New(t)
 	commit := commits.New("test", time.Now().UTC())
 	commit.Add(&commits.File{Path: filePath, Id: filePath + "-hash", PackId: "pack"})
 	data, err := commit.Pack()
-	if err != nil {
-		t.Fatal(err)
-	}
+	is.NoErr(err)
 	return commit.ID(), data
 }
 
@@ -42,8 +41,9 @@ func TestDownloadPrunesStale(t *testing.T) {
 	is.NoErr(cacheFS.WriteFile(keptId, keptData, 0644))
 	is.NoErr(cacheFS.WriteFile(staleId, staleData, 0644))
 
-	cache, err := caches.Download(ctx, logs.Discard(), local.New(repoFS), cacheFS)
+	cache, err := caches.Load(logs.Discard(), cacheFS)
 	is.NoErr(err)
+	is.NoErr(cache.Download(ctx, local.New(repoFS)))
 
 	_, ok := cache.Get("kept.txt", "kept.txt-hash")
 	is.True(ok)

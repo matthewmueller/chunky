@@ -1,6 +1,7 @@
 package chunky
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -25,15 +26,14 @@ import (
 )
 
 type Upload struct {
-	From repos.ReadFS
-	// To is written to, and read to sync Cache when it's a repos.Repo and Base
-	// is nil
+	From  repos.ReadFS
 	To    repos.Writer
 	Cache repos.FS
-	// Base is a commit To already has. Only files missing from it are sent, and
-	// To isn't read. Defaults to the newest commit in Cache when To is
-	// write-only.
+
+	// Base is a commit To already has. Only files missing from it are sent.
+	// Defaults to the newest commit in Cache when To is write-only.
 	Base *Commit
+
 	User   string
 	Tags   []string
 	Paths  []string
@@ -181,27 +181,22 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 
 	log := logs.Scope(c.log)
 
-	// Find the files To already has. A readable To without a base syncs the
-	// cache, so any earlier commit can match. Otherwise only the base's files
-	// match, since that's the one commit To is known to have.
-	var cache *caches.Local
-	var known func(path, hash string) (*commits.File, bool)
+	cache, err := caches.Load(c.log, in.Cache)
+	if err != nil {
+		return "", fmt.Errorf("unable to load the cache: %w", err)
+	}
+
+	// Without a base, sync the cache with To. Otherwise only match the base.
+	known := cache.Get
 	repo, readable := in.To.(repos.Repo)
 	if readable && in.Base == nil {
 		now := time.Now()
-		if cache, err = caches.Download(ctx, c.log, repo, in.Cache); err != nil {
+		if err := cache.Download(ctx, repo); err != nil {
 			return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
 		}
 		log.Debug("downloaded latest commits from the cache", slog.Duration("in", time.Since(now)))
-		known = cache.Get
 	} else {
-		if cache, err = caches.Load(c.log, in.Cache); err != nil {
-			return "", fmt.Errorf("unable to load the cache: %w", err)
-		}
-		base := in.Base
-		if base == nil {
-			base = cache.Newest()
-		}
+		base := cmp.Or(in.Base, cache.Newest())
 		baseFiles := map[string]*commits.File{}
 		baseId := ""
 		if base != nil {
@@ -214,8 +209,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 			file, ok := baseFiles[path]
 			return file, ok && file.Id == hash
 		}
-		// Name the base first, so a write-only To can refuse a base it doesn't
-		// have before the packs arrive
+		// Send the base first, so a write-only To can refuse it early
 		if !readable {
 			if err := in.To.Upload(ctx, &repos.File{Path: "base", Data: []byte(baseId), Mode: 0644}); err != nil {
 				return "", fmt.Errorf("unable to upload base %q: %w", baseId, err)

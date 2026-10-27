@@ -13,20 +13,6 @@ import (
 	"github.com/matthewmueller/chunky/repos"
 )
 
-// Download the cache to the local filesystem
-func Download(ctx context.Context, log *slog.Logger, from repos.Repo, to repos.FS) (*Local, error) {
-	// Load currently cached files
-	cache, err := Load(log, to)
-	if err != nil {
-		return nil, err
-	}
-	// Download any new commits
-	if err := cache.Download(ctx, from); err != nil {
-		return nil, err
-	}
-	return cache, nil
-}
-
 // Load from existing cache
 func Load(log *slog.Logger, fsys repos.FS) (*Local, error) {
 	cache := &Local{

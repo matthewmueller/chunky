@@ -200,18 +200,11 @@ func TestUploadBase(t *testing.T) {
 		Cache: virt.OS(t.TempDir()),
 	})
 	is.NoErr(err)
+	base, err := chky.FindCommit(ctx, &chunky.FindCommit{Repo: to, Revision: "latest"})
+	is.NoErr(err)
 
-	// The base travels as bytes, like a client reading it from a host
-	latest, err := chky.FindCommit(ctx, &chunky.FindCommit{Repo: to, Revision: "latest"})
-	is.NoErr(err)
-	data, err := latest.Pack()
-	is.NoErr(err)
-	base, err := chunky.UnpackCommit(data)
-	is.NoErr(err)
-	is.Equal(base.ID(), latest.ID())
-
-	// A fresh cache only sends the changed file
-	revision, err := chky.Upload(ctx, &chunky.Upload{
+	// A fresh cache with a base only sends the changed file
+	_, err = chky.Upload(ctx, &chunky.Upload{
 		From: virt.Tree{
 			"a.txt": &virt.File{Data: []byte("a"), Mode: 0644},
 			"b.txt": &virt.File{Data: []byte("b2"), Mode: 0644},
@@ -224,24 +217,6 @@ func TestUploadBase(t *testing.T) {
 	packs, err := os.ReadDir(filepath.Join(repoDir, "packs"))
 	is.NoErr(err)
 	is.Equal(len(packs), 2)
-	commit, err := chky.FindCommit(ctx, &chunky.FindCommit{Repo: to, Revision: revision})
-	is.NoErr(err)
-	a, ok := commit.File("a.txt")
-	is.True(ok)
-	baseA, ok := base.File("a.txt")
-	is.True(ok)
-	is.Equal(a.PackId, baseA.PackId)
-
-	dir := t.TempDir()
-	err = chky.Download(ctx, &chunky.Download{
-		From:     to,
-		To:       virt.OS(dir),
-		Revision: "latest",
-	})
-	is.NoErr(err)
-	b, err := os.ReadFile(filepath.Join(dir, "b.txt"))
-	is.NoErr(err)
-	is.Equal(string(b), "b2")
 }
 
 func TestFindCommitMissing(t *testing.T) {

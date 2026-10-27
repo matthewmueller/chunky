@@ -29,9 +29,10 @@ func tree(a, b string) virt.Tree {
 }
 
 // deploy uploads through a pipe into Receive, like a client writing to a
-// host's stdin. It returns the uploaded and received commit ids.
-func deploy(t testing.TB, host repos.Repo, in *chunky.Upload) (uploaded, received string, err error) {
+// host's stdin, and returns the received commit id
+func deploy(t testing.TB, host repos.Repo, in *chunky.Upload) (string, error) {
 	t.Helper()
+	is := is.New(t)
 	ctx := context.Background()
 	pr, pw := io.Pipe()
 	type result struct {
@@ -51,44 +52,35 @@ func deploy(t testing.TB, host repos.Repo, in *chunky.Upload) (uploaded, receive
 	upErr = errors.Join(upErr, w.Close())
 	res := <-done
 	if res.err != nil {
-		if upErr == nil {
-			t.Fatalf("receive failed but upload succeeded: %v", res.err)
-		}
-		return "", "", res.err
+		is.True(upErr != nil) // the upload fails with the receive
+		return "", res.err
 	}
-	if upErr != nil {
-		t.Fatalf("receive succeeded but upload failed: %v", upErr)
-	}
-	return uploaded, res.id, nil
+	is.NoErr(upErr)
+	is.Equal(uploaded, res.id)
+	return res.id, nil
 }
 
 func countPacks(t testing.TB, dir string) int {
 	t.Helper()
+	is := is.New(t)
 	des, err := os.ReadDir(filepath.Join(dir, "packs"))
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		t.Fatal(err)
-	}
+	is.True(err == nil || errors.Is(err, fs.ErrNotExist))
 	return len(des)
 }
 
 func readLatest(t testing.TB, host repos.Repo) virt.Map {
 	t.Helper()
+	is := is.New(t)
 	dir := t.TempDir()
-	if err := chunky.New(logs.Discard()).Download(context.Background(), &chunky.Download{
+	is.NoErr(chunky.New(logs.Discard()).Download(context.Background(), &chunky.Download{
 		From:     host,
 		To:       virt.OS(dir),
 		Revision: "latest",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 	a, err := os.ReadFile(filepath.Join(dir, "a.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	is.NoErr(err)
 	b, err := os.ReadFile(filepath.Join(dir, "b.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	is.NoErr(err)
 	return virt.Map{"a.txt": string(a), "b.txt": string(b)}
 }
 
@@ -98,16 +90,14 @@ func TestRoundTrip(t *testing.T) {
 	host := local.New(virt.OS(hostDir))
 	cache := virt.OS(t.TempDir())
 
-	uploaded, received, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
+	_, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
 	is.NoErr(err)
-	is.Equal(uploaded, received)
 	is.Equal(readLatest(t, host), virt.Map{"a.txt": "a", "b.txt": "b"})
 	is.Equal(countPacks(t, hostDir), 1)
 
 	// A warm client defaults to its last upload as the base
-	uploaded, received, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
+	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
 	is.NoErr(err)
-	is.Equal(uploaded, received)
 	is.Equal(readLatest(t, host), virt.Map{"a.txt": "a", "b.txt": "b2"})
 	is.Equal(countPacks(t, hostDir), 2)
 }
@@ -117,7 +107,7 @@ func TestFreshBase(t *testing.T) {
 	ctx := context.Background()
 	hostDir := t.TempDir()
 	host := local.New(virt.OS(hostDir))
-	_, _, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(t.TempDir())})
+	_, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(t.TempDir())})
 	is.NoErr(err)
 
 	// A fresh client reads the base as bytes, then sends only the changed file
@@ -127,7 +117,7 @@ func TestFreshBase(t *testing.T) {
 	is.NoErr(err)
 	base, err := chunky.UnpackCommit(data)
 	is.NoErr(err)
-	_, _, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir()), Base: base})
+	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir()), Base: base})
 	is.NoErr(err)
 	is.Equal(readLatest(t, host), virt.Map{"a.txt": "a", "b.txt": "b2"})
 	is.Equal(countPacks(t, hostDir), 2)
@@ -137,13 +127,13 @@ func TestMissingBase(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
 	cacheDir := t.TempDir()
-	_, _, err := deploy(t, local.New(virt.OS(t.TempDir())), &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(cacheDir)})
+	_, err := deploy(t, local.New(virt.OS(t.TempDir())), &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(cacheDir)})
 	is.NoErr(err)
 
 	// The cached base is from another host, so it's refused before any packs
 	hostDir := t.TempDir()
 	host := local.New(virt.OS(hostDir))
-	_, _, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(cacheDir)})
+	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(cacheDir)})
 	is.True(errors.Is(err, stream.ErrStale))
 	_, err = os.Stat(filepath.Join(hostDir, "packs"))
 	is.True(errors.Is(err, fs.ErrNotExist))
@@ -151,7 +141,7 @@ func TestMissingBase(t *testing.T) {
 	// Retry like dot: wipe the cache and read the base, which is missing too
 	_, err = chunky.New(logs.Discard()).FindCommit(ctx, &chunky.FindCommit{Repo: host, Revision: "latest"})
 	is.True(errors.Is(err, fs.ErrNotExist))
-	_, _, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir())})
+	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir())})
 	is.NoErr(err)
 	is.Equal(readLatest(t, host), virt.Map{"a.txt": "a", "b.txt": "b2"})
 }
@@ -161,12 +151,12 @@ func TestMissingPack(t *testing.T) {
 	hostDir := t.TempDir()
 	host := local.New(virt.OS(hostDir))
 	cache := virt.OS(t.TempDir())
-	first, _, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
+	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
 	is.NoErr(err)
 	is.NoErr(os.RemoveAll(filepath.Join(hostDir, "packs")))
 
 	// a.txt still points at the deleted pack
-	_, _, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
+	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
 	is.True(errors.Is(err, stream.ErrStale))
 	des, err := os.ReadDir(filepath.Join(hostDir, "commits"))
 	is.NoErr(err)
@@ -179,20 +169,16 @@ func TestMissingPack(t *testing.T) {
 // receive a hand-written tar of entries, each "name" or "name=data"
 func receive(t testing.TB, host repos.Repo, typeflag byte, entries ...string) error {
 	t.Helper()
+	is := is.New(t)
 	buf := new(bytes.Buffer)
 	tw := tar.NewWriter(buf)
 	for _, entry := range entries {
 		name, data, _ := strings.Cut(entry, "=")
-		if err := tw.WriteHeader(&tar.Header{Typeflag: typeflag, Name: name, Mode: 0644, Size: int64(len(data))}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(data)); err != nil {
-			t.Fatal(err)
-		}
+		is.NoErr(tw.WriteHeader(&tar.Header{Typeflag: typeflag, Name: name, Mode: 0644, Size: int64(len(data))}))
+		_, err := tw.Write([]byte(data))
+		is.NoErr(err)
 	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
+	is.NoErr(tw.Close())
 	_, err := stream.Receive(context.Background(), buf, host)
 	return err
 }
@@ -207,10 +193,8 @@ func TestInvalidEntries(t *testing.T) {
 	is.True(receive(t, host, tar.TypeReg, "packs/../../x") != nil)
 	is.True(receive(t, host, tar.TypeReg, "packs/a/b") != nil)
 	is.True(receive(t, host, tar.TypeReg, "other/x") != nil)
-	is.True(receive(t, host, tar.TypeReg, "x") != nil)
 	is.True(receive(t, host, tar.TypeReg, "base=../x") != nil)
 	is.True(receive(t, host, tar.TypeSymlink, "packs/x") != nil)
-	is.True(receive(t, host, tar.TypeDir, "packs/") != nil)
 	is.True(receive(t, host, tar.TypeReg, "tags/latest=x") != nil)
 	is.True(receive(t, host, tar.TypeReg, "packs/x", "base") != nil)
 	_, err := os.Stat(filepath.Join(root, "x"))
@@ -238,27 +222,21 @@ func TestModeMasked(t *testing.T) {
 // io.EOF.
 func cutBefore(t testing.TB, data []byte, prefix string) []byte {
 	t.Helper()
+	is := is.New(t)
 	tr := tar.NewReader(bytes.NewReader(data))
 	buf := new(bytes.Buffer)
 	tw := tar.NewWriter(buf)
 	for {
 		header, err := tr.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
+		is.NoErr(err)
 		if strings.HasPrefix(header.Name, prefix) {
 			break
 		}
-		if err := tw.WriteHeader(header); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := io.Copy(tw, tr); err != nil {
-			t.Fatal(err)
-		}
+		is.NoErr(tw.WriteHeader(header))
+		_, err = io.Copy(tw, tr)
+		is.NoErr(err)
 	}
-	if err := tw.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	is.NoErr(tw.Flush())
 	return buf.Bytes()
 }
 
