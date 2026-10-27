@@ -169,6 +169,32 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 	return nil
 }
 
+// Add a commit to the cache
+func (c *Local) Add(commit *commits.Commit) error {
+	data, err := commit.Pack()
+	if err != nil {
+		return fmt.Errorf("caches: unable to pack commit %s: %w", commit.ID(), err)
+	}
+	if err := c.fsys.WriteFile(commit.ID(), data, 0644); err != nil {
+		return fmt.Errorf("caches: unable to write commit %s: %w", commit.ID(), err)
+	}
+	for _, file := range commit.Files() {
+		c.files[cacheKey(file.Path, file.Id)] = file
+	}
+	c.localCommits[commit.ID()] = commit
+	return nil
+}
+
+// Newest returns the most recently created commit, or nil if the cache is empty
+func (c *Local) Newest() (newest *commits.Commit) {
+	for _, commit := range c.localCommits {
+		if newest == nil || commit.CreatedAt().After(newest.CreatedAt()) {
+			newest = commit
+		}
+	}
+	return newest
+}
+
 func (c *Local) Get(path, hash string) (file *commits.File, ok bool) {
 	file, ok = c.files[cacheKey(path, hash)]
 	return file, ok

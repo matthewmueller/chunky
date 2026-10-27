@@ -45,6 +45,11 @@ func (in *FindCommit) validate() (err error) {
 // Commit represents a commit
 type Commit = commits.Commit
 
+// UnpackCommit decodes a commit encoded by (*Commit).Pack
+func UnpackCommit(data []byte) (*Commit, error) {
+	return commits.Unpack(data)
+}
+
 // FindCommit finds a commit by a revision
 func (c *Client) FindCommit(ctx context.Context, in *FindCommit) (*Commit, error) {
 	if err := in.validate(); err != nil {

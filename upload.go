@@ -25,9 +25,15 @@ import (
 )
 
 type Upload struct {
-	From   repos.ReadFS
-	To     repos.Repo
-	Cache  repos.FS
+	From repos.ReadFS
+	// To is written to, and read to sync Cache when it's a repos.Repo and Base
+	// is nil
+	To    repos.Writer
+	Cache repos.FS
+	// Base is a commit To already has. Only files missing from it are sent, and
+	// To isn't read. Defaults to the newest commit in Cache when To is
+	// write-only.
+	Base *Commit
 	User   string
 	Tags   []string
 	Paths  []string
@@ -175,13 +181,47 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 
 	log := logs.Scope(c.log)
 
-	// Download the latest commits from the cache
-	now := time.Now()
-	cache, err := caches.Download(ctx, c.log, in.To, in.Cache)
-	if err != nil {
-		return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
+	// Find the files To already has. A readable To without a base syncs the
+	// cache, so any earlier commit can match. Otherwise only the base's files
+	// match, since that's the one commit To is known to have.
+	var cache *caches.Local
+	var known func(path, hash string) (*commits.File, bool)
+	repo, readable := in.To.(repos.Repo)
+	if readable && in.Base == nil {
+		now := time.Now()
+		if cache, err = caches.Download(ctx, c.log, repo, in.Cache); err != nil {
+			return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
+		}
+		log.Debug("downloaded latest commits from the cache", slog.Duration("in", time.Since(now)))
+		known = cache.Get
+	} else {
+		if cache, err = caches.Load(c.log, in.Cache); err != nil {
+			return "", fmt.Errorf("unable to load the cache: %w", err)
+		}
+		base := in.Base
+		if base == nil {
+			base = cache.Newest()
+		}
+		baseFiles := map[string]*commits.File{}
+		baseId := ""
+		if base != nil {
+			baseId = base.ID()
+			for _, file := range base.Files() {
+				baseFiles[file.Path] = file
+			}
+		}
+		known = func(path, hash string) (*commits.File, bool) {
+			file, ok := baseFiles[path]
+			return file, ok && file.Id == hash
+		}
+		// Name the base first, so a write-only To can refuse a base it doesn't
+		// have before the packs arrive
+		if !readable {
+			if err := in.To.Upload(ctx, &repos.File{Path: "base", Data: []byte(baseId), Mode: 0644}); err != nil {
+				return "", fmt.Errorf("unable to upload base %q: %w", baseId, err)
+			}
+		}
 	}
-	log.Debug("downloaded latest commits from the cache", slog.Duration("in", time.Since(now)))
 
 	ignore := in.Ignore
 	createdAt := time.Now().UTC()
@@ -222,8 +262,8 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 			// if the file path in the pack is different from the file path in the
 			// commit. To fix this, we also ensure the file paths are the same.
 			// TODO: We should add a way to alias files in the pack to other packs.
-			if cacheFile, ok := cache.Get(fpath, fileHash); ok {
-				log.Debug("file already in cache", slog.String("path", fpath))
+			if cacheFile, ok := known(fpath, fileHash); ok {
+				log.Debug("file already uploaded", slog.String("path", fpath))
 				commit.Add(cacheFile)
 				return nil
 			}
@@ -304,6 +344,11 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	}
 	if err := upload.Direct(ctx, tagFiles...); err != nil {
 		return "", fmt.Errorf("unable to upload tags for commit %q: %w", commitId, err)
+	}
+
+	// Cache the commit, so it can be the next base
+	if err := cache.Add(commit); err != nil {
+		return "", fmt.Errorf("unable to cache commit %q: %w", commitId, err)
 	}
 
 	return commitId, nil

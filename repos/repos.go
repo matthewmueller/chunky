@@ -42,16 +42,21 @@ func Parse(repoPath string) (*url.URL, error) {
 	}, nil
 }
 
-// Repo is a repository interface for uploading and downloading files
-type Repo interface {
+// Writer is a repository that can only be written to, like a one-way stream
+type Writer interface {
 	// Upload from a filesystem to the repository
 	Upload(ctx context.Context, file *File) error
+	// Close the repository
+	Close() error
+}
+
+// Repo is a repository interface for uploading and downloading files
+type Repo interface {
+	Writer
 	// Download paths from the repository to a filesystem
 	Download(ctx context.Context, path string) (*File, error)
 	// ReadDir reads a directory from the repository
 	ReadDir(dir string) ([]fs.DirEntry, error)
-	// Close the repository
-	Close() error
 }
 
 // Download a single file from the repository.
