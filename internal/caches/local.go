@@ -112,7 +112,7 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 
 		// Skip if we already have the commit
 		if _, ok := c.localCommits[commitId]; ok {
-			return nil
+			continue
 		}
 
 		// Download the commit
