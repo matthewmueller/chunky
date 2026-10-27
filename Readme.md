@@ -157,6 +157,41 @@ revision, err := chunky.New(logs.Default()).Upload(ctx, &chunky.Upload{
 
 The HTTP repository is only available through the Go API for now. The CLI supports local and SFTP repositories.
 
+### Deploying over a one-way stream
+
+The `repos/stream` package uploads over any one-way pipe, like SSH stdin or an HTTP request body. The client sends files on top of a **base**: a commit the host already has. Files that match the base are referenced instead of sent.
+
+On the client, write to the pipe. A fresh client reads the host's `latest` commit as bytes first and passes it as `Base`. A warm client can leave `Base` empty, since each upload is cached and becomes the next base.
+
+```go
+import "github.com/matthewmueller/chunky/repos/stream"
+
+// Optional: data is latest.Pack() from the host, read separately
+base, err := chunky.UnpackCommit(data)
+
+to := stream.New(stdin) // an io.WriteCloser
+revision, err := chunky.New(logs.Default()).Upload(ctx, &chunky.Upload{
+	From:  virt.OS("."),
+	To:    to,
+	Cache: virt.OS(cacheDir),
+	Base:  base,
+})
+err = to.Close()
+```
+
+On the host, receive the stream into a repository:
+
+```go
+repo := local.New(virt.OS("/var/lib/my-repo"))
+revision, err := stream.Receive(ctx, os.Stdin, repo)
+if errors.Is(err, stream.ErrStale) {
+	// The host is missing the base or one of its packs. The client should
+	// clear its cache, read the base again and retry once.
+}
+```
+
+`Receive` refuses a missing base before any packs are written. It only writes the commit and tags once the stream ends with `tags/latest` naming the commit, so a cut or refused stream leaves at most unreferenced packs.
+
 ## Similar Tools
 
 - **Git:** You need to use a Git extension to store large binaries and overall requires too much ceremony when you just want to sync a directory on a remote machine. You may also want to sync files in your `.gitignore` to production servers (e.g. compiled assets).
@@ -165,24 +200,29 @@ The HTTP repository is only available through the Go API for now. The CLI suppor
 
 ## Adding New Repositories
 
-Chunky currently supports three repository backends:
+Chunky currently supports four repository backends:
 
 1. `Local`: Store your repository in your local filesystem
 2. `SFTP`: Store your repository on a remote server
 3. `HTTP`: Store your repository on a remote server that serves it with `http.Handler`
+4. `Stream`: Write-only. Send an upload over a one-way pipe to `stream.Receive`
 
-I'd encourage you to contribute new repository backends to Chunky. The interface is quite straightforward to implement:
+I'd encourage you to contribute new repository backends to Chunky. The interfaces are quite straightforward to implement:
 
 ```go
-type Repo interface {
+type Writer interface {
 	// Upload from a filesystem to the repository
 	Upload(ctx context.Context, file *File) error
+	// Close the repository
+	Close() error
+}
+
+type Repo interface {
+	Writer
 	// Download paths from the repository to a filesystem
 	Download(ctx context.Context, path string) (*File, error)
 	// ReadDir reads a directory from the repository
 	ReadDir(dir string) ([]fs.DirEntry, error)
-	// Close the repository
-	Close() error
 }
 ```
 

@@ -1,3 +1,13 @@
+# 0.6.0 / 2026-10-27
+
+- add: `repos/stream` for uploading over a one-way pipe like SSH stdin. `stream.New(w)` writes, `stream.Receive(ctx, r, repo)` reads and returns `stream.ErrStale` when the host is missing the base
+- add: `Upload.Base` to upload on top of a commit the repository already has, without reading it
+- add: `chunky.UnpackCommit`, the inverse of `(*Commit).Pack`
+- add: `repos.Writer`, a write-only repository that `repos.Repo` embeds
+- fix: syncing the upload cache stopped at the first cached commit, so it missed newer commits and never pruned deleted ones
+- fix: `FindCommit` wraps `fs.ErrNotExist` when a revision doesn't exist
+- **BREAKING:** `Upload.To` is now a `repos.Writer`. Every `repos.Repo` still works, but code that reads the field back as a `repos.Repo` needs a type assertion
+
 # 0.5.0 / 2026-10-25
 
 - BREAKING: `http.New` now only takes the repo url. Set `repo.Client` to use a custom `http.Client`
