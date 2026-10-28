@@ -281,26 +281,97 @@ func TestReceive(t *testing.T) {
 	is.Equal(countPacks(t, hostDir), 2)
 }
 
-func TestReceiveBase(t *testing.T) {
+// missing round-trips the client's manifest and the host's answer through
+// their text form, like a client asking a host over a pipe
+func missing(t testing.TB, host repos.Repo, from virt.Tree) (*chunky.Manifest, string) {
+	t.Helper()
 	is := is.New(t)
 	ctx := context.Background()
+	chky := chunky.New(logs.Discard())
+	manifest, err := chky.Manifest(ctx, &chunky.Upload{From: from})
+	is.NoErr(err)
+	buf := new(bytes.Buffer)
+	_, err = manifest.WriteTo(buf)
+	is.NoErr(err)
+	manifest, err = chunky.ReadManifest(buf)
+	is.NoErr(err)
+	missing, err := chky.Missing(ctx, host, manifest)
+	is.NoErr(err)
+	buf.Reset()
+	_, err = missing.WriteTo(buf)
+	is.NoErr(err)
+	text := buf.String()
+	missing, err = chunky.ReadManifest(buf)
+	is.NoErr(err)
+	return missing, text
+}
+
+// paths lists the paths in a manifest's text
+func paths(text string) (paths []string) {
+	for line := range strings.Lines(text) {
+		_, fpath, _ := strings.Cut(strings.TrimSpace(line), " ")
+		paths = append(paths, fpath)
+	}
+	return paths
+}
+
+func TestMissing(t *testing.T) {
+	is := is.New(t)
 	hostDir := t.TempDir()
 	host := local.New(virt.OS(hostDir))
-	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(t.TempDir())})
-	is.NoErr(err)
-	is.True(first != "")
 
-	// A fresh cache reads the base from the host, then only sends the changed
-	// file
-	base, err := chunky.New(logs.Discard()).FindCommit(ctx, host, "latest")
+	// An empty host is missing everything
+	m, text := missing(t, host, tree("a", "b"))
+	is.Equal(paths(text), []string{"a.txt", "b.txt"})
+	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m})
 	is.NoErr(err)
-	is.True(base != nil)
-	is.Equal(base.ID(), first)
-	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir()), Base: base})
+	is.True(revision != "")
+	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b"})
+	is.Equal(countPacks(t, hostDir), 1)
+
+	// A client without a cache only sends the changed file
+	m, text = missing(t, host, tree("a", "b2"))
+	is.Equal(paths(text), []string{"b.txt"})
+	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Missing: m})
 	is.NoErr(err)
 	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b2"})
 	is.Equal(countPacks(t, hostDir), 2)
+
+	// Files from older commits count too, so going back sends nothing
+	m, text = missing(t, host, tree("a", "b"))
+	is.Equal(text, "")
+	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m})
+	is.NoErr(err)
+	is.True(revision != "")
+	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b"})
+	is.Equal(countPacks(t, hostDir), 2)
+}
+
+func TestReceiveMissingFile(t *testing.T) {
+	is := is.New(t)
+	hostDir := t.TempDir()
+	host := local.New(virt.OS(hostDir))
+
+	// The client was told the host has everything, but it has nothing
+	m, err := chunky.ReadManifest(strings.NewReader(""))
+	is.NoErr(err)
+	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m})
+	is.True(errors.Is(err, chunky.ErrStale))
+	is.Equal(revision, "")
+	info, err := os.Stat(filepath.Join(hostDir, "commits"))
+	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(info, nil)
+}
+
+func TestReadManifestInvalid(t *testing.T) {
+	is := is.New(t)
+	m, err := chunky.ReadManifest(strings.NewReader("abc\n"))
+	is.True(err != nil)
+	is.Equal(m, nil)
+	m, err = chunky.ReadManifest(strings.NewReader("abc ../x\n"))
+	is.True(err != nil)
+	is.Equal(m, nil)
 }
 
 func TestReceiveStale(t *testing.T) {

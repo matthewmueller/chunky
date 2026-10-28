@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"slices"
 	"strings"
 
@@ -23,7 +22,6 @@ type Upload struct {
 	Cache       bool
 	LimitUpload string
 	Concurrency *int
-	Base        string
 }
 
 func (u *Upload) command(cli cli.Command) cli.Command {
@@ -34,7 +32,6 @@ func (u *Upload) command(cli cli.Command) cli.Command {
 	cmd.Flag("paths", "subpaths to upload").Strings(&u.Paths).Default(".")
 	cmd.Flag("limit-upload", "limit bytes per second").String(&u.LimitUpload).Default("")
 	cmd.Flag("concurrency", "number of concurrent uploads").Optional().Int(&u.Concurrency)
-	cmd.Flag("base", "repository to read the latest commit from, when the upload can't read it").String(&u.Base).Default("")
 	return cmd
 }
 
@@ -72,20 +69,6 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	// Upload on top of the latest commit, read from a repository we can read
-	var base *chunky.Commit
-	if in.Base != "" {
-		baseRepo, err := c.loadRepo(in.Base)
-		if err != nil {
-			return err
-		}
-		defer baseRepo.Close()
-		base, err = c.chunky.FindCommit(ctx, baseRepo, "latest")
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-	}
-
 	revision, err := c.chunky.Upload(ctx, &chunky.Upload{
 		From:        fsys,
 		To:          to,
@@ -93,7 +76,6 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		Paths:       in.Paths,
 		User:        user,
 		Cache:       cache,
-		Base:        base,
 		LimitUpload: in.LimitUpload,
 		Concurrency: in.Concurrency,
 	})
@@ -126,9 +108,6 @@ func uploadFlags(in *Upload) (flags []string) {
 	}
 	if in.Concurrency != nil {
 		flags = append(flags, "--concurrency")
-	}
-	if in.Base != "" {
-		flags = append(flags, "--base")
 	}
 	return flags
 }

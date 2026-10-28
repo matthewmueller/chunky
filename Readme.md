@@ -27,12 +27,12 @@ This will create a directory `my-repo` in the `$HOME/vagrant` directory on your 
 ### Upload over SSH without SFTP
 
 ```bash
-$ chunky upload . - --base vagrant@127.0.0.1:2222/my-repo | ssh vagrant@127.0.0.1 -p 2222 chunky upload - my-repo
+$ chunky upload . - | ssh vagrant@127.0.0.1 -p 2222 chunky upload - my-repo
 ```
 
 Use `-` as the repository to stream the upload to stdout, and `-` as the directory to receive one from stdin. The remote machine needs `chunky` installed.
 
-`--base` reads the repository's latest commit over SFTP, so only files that changed since then are sent. Without it, the upload only skips files in the local cache for `-`. If you upload to a different machine, the receiver refuses the upload as stale. Run `chunky cache-prune -` and try again.
+The upload only skips files in the local cache for `-`. If you upload to a different machine, the receiver refuses the upload as stale. Run `chunky cache-prune -` and try again. To skip files without a cache, ask the receiver which files it's missing first with the Go API, as below.
 
 ### List all versions
 
@@ -171,27 +171,28 @@ The HTTP repository is only available through the Go API for now. The CLI suppor
 
 The `repos/stream` package carries an upload over any one-way pipe, like SSH stdin or an HTTP request body, and `Receive` writes it into a repository on the other end.
 
-The client can't read the repository through a pipe, so it only skips files it already has in its cache. If the client can also read the repository, like over SFTP or HTTP, it can find the latest commit and upload on top of it as `Base`:
+The client can't read the repository through a pipe, so it can only skip files in its cache. To send only what the repository is missing without a cache, ask first. Send the client's manifest, a `<hash> <path>` line per file, and the host answers with the lines it's missing. That makes two one-way requests, so it works through an HTTP proxy too:
 
 ```go
 import "github.com/matthewmueller/chunky/repos/stream"
 
 chky := chunky.New(logs.Default())
+upload := &chunky.Upload{From: virt.OS(".")}
 
-// Optional: base is nil when the repository is empty
-base, err := chky.FindCommit(ctx, hostRepo, "latest")
-if err != nil && !errors.Is(err, fs.ErrNotExist) {
-	return err
-}
+// Client: list the files and hashes, and send them to the host
+manifest, err := chky.Manifest(ctx, upload)
+manifest.WriteTo(request)
 
-to := stream.New(stdin) // an io.WriteCloser
-revision, err := chky.Upload(ctx, &chunky.Upload{
-	From:  virt.OS("."),
-	To:    to,
-	Cache: virt.OS(cacheDir),
-	Base:  base,
-})
-err = to.Close()
+// Host: answer with the files it doesn't have, from any commit
+manifest, err := chunky.ReadManifest(request)
+missing, err := chky.Missing(ctx, repo, manifest)
+missing.WriteTo(response)
+
+// Client: send only the missing files, and reference the rest
+upload.Missing, err = chunky.ReadManifest(response)
+upload.To = stream.New(stdin) // an io.WriteCloser
+revision, err := chky.Upload(ctx, upload)
+err = upload.To.Close()
 ```
 
 On the host, receive the stream into a repository:
@@ -200,12 +201,12 @@ On the host, receive the stream into a repository:
 repo := local.New(virt.OS("/var/lib/my-repo"))
 revision, err := chky.Receive(ctx, os.Stdin, repo)
 if errors.Is(err, chunky.ErrStale) {
-	// The upload references a pack the repository doesn't have. The client
-	// should clear its cache and retry once.
+	// The upload references a pack or file the repository doesn't have. The
+	// client should clear its cache, or ask for Missing again, and retry once.
 }
 ```
 
-`Receive` only writes the commit and its tags once the stream ends with the latest tag, so a cut or refused stream leaves at most unreferenced packs.
+`Receive` fills in the packs of referenced files when the commit arrives, and only writes the commit and its tags once the stream ends with the latest tag, so a cut or refused stream leaves at most unreferenced packs.
 
 ## Similar Tools
 

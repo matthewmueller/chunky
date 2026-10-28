@@ -25,13 +25,16 @@ import (
 )
 
 type Upload struct {
-	From  repos.ReadFS
-	To    repos.Writer
+	From repos.ReadFS
+	To   repos.Writer
+	// Cache remembers what was uploaded, so the next upload skips it (default:
+	// none)
 	Cache repos.FS
 
-	// Base is a commit To already has, for when To can't be read. It's added
-	// to Cache, so only files missing from it are sent.
-	Base *Commit
+	// Missing lists the files To is missing, from Client.Missing. Only those
+	// are sent, and the rest are referenced for Receive to resolve. Cache is
+	// unused.
+	Missing *Manifest
 
 	User   string
 	Tags   []string
@@ -64,11 +67,8 @@ func (in *Upload) validate() (err error) {
 	if in.From == nil {
 		err = errors.Join(err, errors.New("missing from filesystem"))
 	}
-	if in.To == nil {
-		err = errors.Join(err, errors.New("missing to repository"))
-	}
 	if in.Cache == nil {
-		err = errors.Join(err, errors.New("missing cache"))
+		in.Cache = virt.Tree{}
 	}
 
 	// Default to the current user
@@ -177,22 +177,20 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	if err := in.validate(); err != nil {
 		return "", fmt.Errorf("invalid upload input: %w", err)
 	}
+	if in.To == nil {
+		return "", errors.New("invalid upload input: missing to repository")
+	}
 
 	log := logs.Scope(c.log)
 
-	// Load the cache, starting from the base if there is one
+	// Without Missing, the cache decides which files To already has
 	cache, err := caches.Load(c.log, in.Cache)
 	if err != nil {
 		return "", fmt.Errorf("unable to load the cache: %w", err)
 	}
-	if in.Base != nil {
-		if err := cache.Add(in.Base); err != nil {
-			return "", fmt.Errorf("unable to cache base %q: %w", in.Base.ID(), err)
-		}
-	}
 
 	// Sync the cache with To when we can read it
-	if repo, ok := in.To.(repos.Repo); ok {
+	if repo, ok := in.To.(repos.Repo); ok && in.Missing == nil {
 		now := time.Now()
 		if err := cache.Download(ctx, repo); err != nil {
 			return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
@@ -200,7 +198,6 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 		log.Debug("downloaded latest commits from the cache", slog.Duration("in", time.Since(now)))
 	}
 
-	ignore := in.Ignore
 	createdAt := time.Now().UTC()
 	commit := commits.New(in.User, createdAt)
 	commitId := commit.ID()
@@ -211,83 +208,71 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	upload.MaxChunkSize = in.maxChunkSize
 	upload.Limiter = rate.New(in.limitUpload)
 
-	// Walk over the files, chunk them and add them to the file system we're going
-	// to upload. We'll also add each file to the commit object.
-	for _, p := range in.Paths {
-		if err := fs.WalkDir(in.From, p, func(fpath string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			} else if d.IsDir() {
-				if ignore(fpath) {
-					log.Debug("ignoring directory", slog.String("path", fpath))
-					return fs.SkipDir
-				}
-				return nil
-			} else if ignore(fpath) {
-				log.Debug("ignoring file", slog.String("path", fpath))
-				return nil
-			}
+	// Chunk the files into packs, and add each file to the commit
+	if err := in.walk(func(fpath, fileHash string) error {
+		// Get the file lstat
+		lstat, err := in.From.Lstat(fpath)
+		if err != nil {
+			return fmt.Errorf("unable to lstat file %q: %w", fpath, err)
+		}
 
-			// Hash the file into a sha256 hash, this reads the file in chunks, rather
-			// than loading the entire file into memory.
-			fileHash, err := sha256.HashFile(in.From, fpath, in.maxChunkSize)
-			if err != nil {
-				return fmt.Errorf("unable to hash file %q: %w", fpath, err)
-			}
+		// Reference the files To has. Receive resolves their packs.
+		if in.Missing != nil && !in.Missing.Has(fpath, fileHash) {
+			commit.Add(&commits.File{
+				Path: fpath,
+				Id:   fileHash,
+				Size: uint64(lstat.Size()),
+			})
+			return nil
+		}
 
-			// Check if the file is already in the pack. This will duplicate content
-			// if the file path in the pack is different from the file path in the
-			// commit. To fix this, we also ensure the file paths are the same.
-			// TODO: We should add a way to alias files in the pack to other packs.
+		// Check if the file is already in the pack. This will duplicate content
+		// if the file path in the pack is different from the file path in the
+		// commit. To fix this, we also ensure the file paths are the same.
+		// TODO: We should add a way to alias files in the pack to other packs.
+		if in.Missing == nil {
 			if cacheFile, ok := cache.Get(fpath, fileHash); ok {
 				log.Debug("file already in cache", slog.String("path", fpath))
 				commit.Add(cacheFile)
 				return nil
 			}
-
-			// Get the file lstat
-			lstat, err := in.From.Lstat(fpath)
-			if err != nil {
-				return fmt.Errorf("unable to lstat file %q: %w", fpath, err)
-			}
-
-			// Create a reader for the file data, handling symlinks
-			reader, err := openReader(in.From, fpath, lstat)
-			if err != nil {
-				return fmt.Errorf("unable to open reader %q: %w", fpath, err)
-			}
-
-			// Add the file to the pack
-			packId, err := upload.Add(ctx, &uploads.File{
-				Reader:  reader,
-				Path:    fpath,
-				Hash:    fileHash,
-				Mode:    lstat.Mode(),
-				Size:    lstat.Size(),
-				ModTime: lstat.ModTime(),
-			})
-			if err != nil {
-				return fmt.Errorf("unable to add file %q to pack: %w", fpath, err)
-			}
-
-			log.Debug("added file to pack",
-				slog.String("commit_id", commitId),
-				slog.String("path", fpath),
-				slog.String("pack_id", packId),
-			)
-
-			// Add the file to the commit
-			commit.Add(&commits.File{
-				Path:   fpath,
-				Id:     fileHash,
-				PackId: packId,
-				Size:   uint64(lstat.Size()),
-			})
-
-			return nil
-		}); err != nil {
-			return "", fmt.Errorf("unable to walk directory %q: %w", p, err)
 		}
+
+		// Create a reader for the file data, handling symlinks
+		reader, err := openReader(in.From, fpath, lstat)
+		if err != nil {
+			return fmt.Errorf("unable to open reader %q: %w", fpath, err)
+		}
+
+		// Add the file to the pack
+		packId, err := upload.Add(ctx, &uploads.File{
+			Reader:  reader,
+			Path:    fpath,
+			Hash:    fileHash,
+			Mode:    lstat.Mode(),
+			Size:    lstat.Size(),
+			ModTime: lstat.ModTime(),
+		})
+		if err != nil {
+			return fmt.Errorf("unable to add file %q to pack: %w", fpath, err)
+		}
+
+		log.Debug("added file to pack",
+			slog.String("commit_id", commitId),
+			slog.String("path", fpath),
+			slog.String("pack_id", packId),
+		)
+
+		// Add the file to the commit
+		commit.Add(&commits.File{
+			Path:   fpath,
+			Id:     fileHash,
+			PackId: packId,
+			Size:   uint64(lstat.Size()),
+		})
+		return nil
+	}); err != nil {
+		return "", err
 	}
 
 	// Upload any remaining files in the pack before committing
@@ -323,12 +308,43 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 		return "", fmt.Errorf("unable to upload tags for commit %q: %w", commitId, err)
 	}
 
-	// Cache the commit, so the next upload can skip its files without reading To
-	if err := cache.Add(commit); err != nil {
-		return "", fmt.Errorf("unable to cache commit %q: %w", commitId, err)
+	// Cache the commit, so the next upload can skip its files without reading
+	// To. With Missing, the commit's references have no packs to cache.
+	if in.Missing == nil {
+		if err := cache.Add(commit); err != nil {
+			return "", fmt.Errorf("unable to cache commit %q: %w", commitId, err)
+		}
 	}
 
 	return commitId, nil
+}
+
+// walk the upload's files that aren't ignored, with their hashes
+func (in *Upload) walk(fn func(fpath, hash string) error) error {
+	for _, p := range in.Paths {
+		if err := fs.WalkDir(in.From, p, func(fpath string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			} else if in.Ignore(fpath) {
+				if d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			} else if d.IsDir() {
+				return nil
+			}
+			// Hash the file into a sha256 hash, this reads the file in chunks, rather
+			// than loading the entire file into memory.
+			hash, err := sha256.HashFile(in.From, fpath, in.maxChunkSize)
+			if err != nil {
+				return fmt.Errorf("unable to hash file %q: %w", fpath, err)
+			}
+			return fn(fpath, hash)
+		}); err != nil {
+			return fmt.Errorf("unable to walk directory %q: %w", p, err)
+		}
+	}
+	return nil
 }
 
 // Open a file from the filesystem, handling symlinks. For symlinks, the

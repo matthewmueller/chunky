@@ -13,9 +13,9 @@ import (
 	"github.com/matthewmueller/chunky/repos/stream"
 )
 
-// ErrStale means the upload references a pack the repository doesn't have,
-// usually because the uploader's cache is out of date. Clear the cache and
-// retry.
+// ErrStale means the upload references a pack or file the repository
+// doesn't have, usually because the uploader's cache is out of date. Clear the
+// cache, or ask for Missing again, and retry.
 var ErrStale = errors.New("chunky: stale upload")
 
 // Receive an upload streamed by repos/stream into a repository. Packs are
@@ -32,8 +32,13 @@ func (c *Client) Receive(ctx context.Context, from io.Reader, to repos.Repo) (re
 		case dir == "packs/" && commit == nil:
 			return to.Upload(ctx, file)
 		case dir == "commits/" && commit == nil:
+			data, err := resolve(ctx, to, file.Data)
+			if err != nil {
+				return err
+			}
+			file.Data = data
 			commit, revision = file, name
-			return checkPacks(to, file.Data)
+			return nil
 		case dir == "tags/" && commit != nil:
 			if string(file.Data) != revision {
 				return fmt.Errorf("tag %q doesn't name commit %s", name, revision)
@@ -59,15 +64,35 @@ func (c *Client) Receive(ctx context.Context, from io.Reader, to repos.Repo) (re
 	return revision, nil
 }
 
-// Check that the repository has every pack the commit references
-func checkPacks(repo repos.Repo, commitData []byte) error {
+// resolve the packs of the files the commit references without one, from the
+// files the repository has, then check it has every pack the commit needs
+func resolve(ctx context.Context, repo repos.Repo, commitData []byte) ([]byte, error) {
 	commit, err := commits.Unpack(commitData)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var have map[string]string
+	resolved := false
+	for _, file := range commit.Files() {
+		if file.PackId != "" {
+			continue
+		}
+		if have == nil {
+			if have, err = index(ctx, repo); err != nil {
+				return nil, err
+			}
+		}
+		packId, ok := have[indexKey(file.Path, file.Id)]
+		if !ok {
+			return nil, fmt.Errorf("%w: missing file %s", ErrStale, file.Path)
+		}
+		file.PackId = packId
+		resolved = true
+	}
+
 	des, err := repo.ReadDir("packs")
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("unable to read packs: %w", err)
+		return nil, fmt.Errorf("unable to read packs: %w", err)
 	}
 	packs := make(map[string]bool, len(des))
 	for _, de := range des {
@@ -75,8 +100,11 @@ func checkPacks(repo repos.Repo, commitData []byte) error {
 	}
 	for _, pack := range commit.Packs() {
 		if !packs[pack.ID] {
-			return fmt.Errorf("%w: missing pack %s", ErrStale, pack.ID)
+			return nil, fmt.Errorf("%w: missing pack %s", ErrStale, pack.ID)
 		}
 	}
-	return nil
+	if !resolved {
+		return commitData, nil
+	}
+	return commit.Pack()
 }
