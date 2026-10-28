@@ -263,6 +263,27 @@ func readLatest(t testing.TB, host repos.Repo) map[string]string {
 	return map[string]string{"a.txt": string(a), "b.txt": string(b)}
 }
 
+func TestFindCommitTag(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	chky := chunky.New(logs.Discard())
+	host := local.New(virt.OS(t.TempDir()))
+	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b")})
+	is.NoErr(err)
+	second, err := deploy(t, host, &chunky.Upload{From: tree("a", "b2")})
+	is.NoErr(err)
+
+	// A tag lists every commit it has named, and resolves to the newest
+	is.NoErr(chky.TagRevision(ctx, &chunky.TagRevision{Repo: host, Tag: "v1", Revision: first}))
+	commit, err := chky.FindCommit(ctx, host, "v1")
+	is.NoErr(err)
+	is.Equal(commit.ID(), first)
+	is.NoErr(chky.TagRevision(ctx, &chunky.TagRevision{Repo: host, Tag: "v1", Revision: second}))
+	commit, err = chky.FindCommit(ctx, host, "v1")
+	is.NoErr(err)
+	is.Equal(commit.ID(), second)
+}
+
 func TestReceive(t *testing.T) {
 	is := is.New(t)
 	hostDir := t.TempDir()

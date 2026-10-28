@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/matthewmueller/chunky/internal/tags"
 	"github.com/matthewmueller/chunky/internal/timeid"
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/segmentio/ksuid"
@@ -207,15 +208,15 @@ func resolveRevision(ctx context.Context, repo repos.Repo, revision string) (sha
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", fmt.Errorf("commits: unable to download commit: %w", err)
 	}
-	// Try to download the tag
-	tag, err := repos.Download(ctx, repo, path.Join("tags", revision))
+	// Try to read the tag, which lists its commits with the newest last
+	tag, err := tags.Read(ctx, repo, revision)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return "", fmt.Errorf("commits: revision not found: %s: %w", revision, err)
 		}
 		return "", fmt.Errorf("commits: unable to download tag: %w", err)
 	}
-	return string(tag.Data), nil
+	return tag.Newest(), nil
 }
 
 func read(ctx context.Context, repo repos.Repo, path string) (*Commit, error) {
