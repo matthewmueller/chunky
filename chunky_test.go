@@ -283,10 +283,10 @@ func TestReceive(t *testing.T) {
 	is.Equal(countPacks(t, hostDir), 2)
 }
 
-// missing asks host which of the files in from it's missing
-func missing(ctx context.Context, host repos.Repo, from virt.Tree) (chunky.Manifest, error) {
+// missing asks host which of the upload's files it's missing
+func missing(ctx context.Context, host repos.Repo, in *chunky.Upload) (chunky.Manifest, error) {
 	chky := chunky.New(logs.Discard())
-	manifest, err := chky.Manifest(ctx, &chunky.Upload{From: from})
+	manifest, err := chky.Manifest(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -300,31 +300,38 @@ func TestMissing(t *testing.T) {
 	host := local.New(virt.OS(hostDir))
 
 	// An empty host is missing everything
-	m, err := missing(ctx, host, tree("a", "b"))
+	// The same Upload asks for Missing and then uploads, like the Readme
+	upload := &chunky.Upload{From: tree("a", "b")}
+	m, err := missing(ctx, host, upload)
 	is.NoErr(err)
 	is.Equal(slices.Sorted(maps.Keys(m)), []string{"a.txt", "b.txt"})
-	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m})
+	upload.Missing = m
+	revision, err := deploy(t, host, upload)
 	is.NoErr(err)
 	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b"})
 	is.Equal(countPacks(t, hostDir), 1)
 
 	// A client without a cache only sends the changed file
-	m, err = missing(ctx, host, tree("a", "b2"))
+	upload = &chunky.Upload{From: tree("a", "b2")}
+	m, err = missing(ctx, host, upload)
 	is.NoErr(err)
 	is.Equal(slices.Sorted(maps.Keys(m)), []string{"b.txt"})
-	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Missing: m})
+	upload.Missing = m
+	revision, err = deploy(t, host, upload)
 	is.NoErr(err)
 	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b2"})
 	is.Equal(countPacks(t, hostDir), 2)
 
 	// Files from older commits count too, so going back sends nothing
-	m, err = missing(ctx, host, tree("a", "b"))
+	upload = &chunky.Upload{From: tree("a", "b")}
+	m, err = missing(ctx, host, upload)
 	is.NoErr(err)
 	is.True(m != nil)
 	is.Equal(len(m), 0)
-	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m})
+	upload.Missing = m
+	revision, err = deploy(t, host, upload)
 	is.NoErr(err)
 	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b"})

@@ -70,9 +70,6 @@ func (in *Upload) validate() (err error) {
 	if in.Cache != nil && in.Missing != nil {
 		err = errors.Join(err, errors.New("cache and missing can't be used together"))
 	}
-	if in.Cache == nil {
-		in.Cache = virt.Tree{}
-	}
 
 	// Default to the current user
 	if in.User == "" {
@@ -186,7 +183,13 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 
 	log := logs.Scope(c.log)
 
-	cache, err := caches.Load(c.log, in.Cache)
+	// Without a cache, remember files for this upload only. Don't default
+	// in.Cache, so the same Upload can be reused after setting Missing.
+	cacheFS := in.Cache
+	if cacheFS == nil {
+		cacheFS = virt.Tree{}
+	}
+	cache, err := caches.Load(c.log, cacheFS)
 	if err != nil {
 		return "", fmt.Errorf("unable to load the cache: %w", err)
 	}
