@@ -118,7 +118,7 @@ type Repo interface {
 
 ### Uploading over a one-way stream
 
-A stream can't be read, so to skip files the repository already has without a cache, the client asks the host first. That's two one-way requests, so it works through an HTTP proxy.
+Ask the host which files it's missing, then stream only those.
 
 On the client:
 
