@@ -21,11 +21,13 @@ func (nopCloser) Close() error { return nil }
 // readAll reads a stream into a map of path to data
 func readAll(r io.Reader) (map[string]string, error) {
 	files := map[string]string{}
-	err := stream.Read(r, func(file *repos.File) error {
+	if err := stream.Read(r, func(file *repos.File) error {
 		files[file.Path] = string(file.Data)
 		return nil
-	})
-	return files, err
+	}); err != nil {
+		return nil, err
+	}
+	return files, nil
 }
 
 // write a hand-written tar with one entry
@@ -54,14 +56,18 @@ func TestRoundTrip(t *testing.T) {
 
 func TestInvalid(t *testing.T) {
 	is := is.New(t)
-	_, err := readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "../x"})))
+	files, err := readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "../x"})))
 	is.True(err != nil)
-	_, err = readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "/x"})))
+	is.Equal(files, nil)
+	files, err = readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "/x"})))
 	is.True(err != nil)
-	_, err = readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "packs/../../x"})))
+	is.Equal(files, nil)
+	files, err = readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "packs/../../x"})))
 	is.True(err != nil)
-	_, err = readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeSymlink, Name: "packs/x", Linkname: "/etc/passwd"})))
+	is.Equal(files, nil)
+	files, err = readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeSymlink, Name: "packs/x", Linkname: "/etc/passwd"})))
 	is.True(err != nil)
+	is.Equal(files, nil)
 }
 
 func TestModeMasked(t *testing.T) {
@@ -89,6 +95,7 @@ func TestCut(t *testing.T) {
 	is.NoErr(err)
 	is.Equal(files, map[string]string{"packs/a": "a"})
 
-	_, err = readAll(bytes.NewReader(full[:boundary+100]))
+	files, err = readAll(bytes.NewReader(full[:boundary+100]))
 	is.True(errors.Is(err, io.ErrUnexpectedEOF))
+	is.Equal(files, nil)
 }

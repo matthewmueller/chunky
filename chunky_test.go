@@ -192,8 +192,9 @@ func TestPaths(t *testing.T) {
 func TestFindCommitMissing(t *testing.T) {
 	is := is.New(t)
 	chky := chunky.New(logs.Default())
-	_, err := chky.FindCommit(context.Background(), local.New(virt.OS(t.TempDir())), "latest")
+	commit, err := chky.FindCommit(context.Background(), local.New(virt.OS(t.TempDir())), "latest")
 	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(commit, nil)
 }
 
 func tree(a, b string) virt.Tree {
@@ -266,14 +267,16 @@ func TestReceive(t *testing.T) {
 	host := local.New(virt.OS(hostDir))
 	cache := virt.OS(t.TempDir())
 
-	_, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
+	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
 	is.NoErr(err)
+	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b"})
 	is.Equal(countPacks(t, hostDir), 1)
 
 	// A warm cache only sends the changed file
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
+	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
 	is.NoErr(err)
+	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b2"})
 	is.Equal(countPacks(t, hostDir), 2)
 }
@@ -283,15 +286,19 @@ func TestReceiveBase(t *testing.T) {
 	ctx := context.Background()
 	hostDir := t.TempDir()
 	host := local.New(virt.OS(hostDir))
-	_, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(t.TempDir())})
+	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(t.TempDir())})
 	is.NoErr(err)
+	is.True(first != "")
 
 	// A fresh cache reads the base from the host, then only sends the changed
 	// file
 	base, err := chunky.New(logs.Discard()).FindCommit(ctx, host, "latest")
 	is.NoErr(err)
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir()), Base: base})
+	is.True(base != nil)
+	is.Equal(base.ID(), first)
+	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir()), Base: base})
 	is.NoErr(err)
+	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b2"})
 	is.Equal(countPacks(t, hostDir), 2)
 }
@@ -300,23 +307,28 @@ func TestReceiveStale(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
 	cacheDir := t.TempDir()
-	_, err := deploy(t, local.New(virt.OS(t.TempDir())), &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(cacheDir)})
+	revision, err := deploy(t, local.New(virt.OS(t.TempDir())), &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(cacheDir)})
 	is.NoErr(err)
+	is.True(revision != "")
 
 	// The cache is from another host, so a.txt points at a pack this host
 	// doesn't have
 	hostDir := t.TempDir()
 	host := local.New(virt.OS(hostDir))
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(cacheDir)})
+	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(cacheDir)})
 	is.True(errors.Is(err, chunky.ErrStale))
-	_, err = os.Stat(filepath.Join(hostDir, "commits"))
+	is.Equal(revision, "")
+	info, err := os.Stat(filepath.Join(hostDir, "commits"))
 	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(info, nil)
 
 	// Retry with a fresh cache, after the base read finds nothing
-	_, err = chunky.New(logs.Discard()).FindCommit(ctx, host, "latest")
+	base, err := chunky.New(logs.Discard()).FindCommit(ctx, host, "latest")
 	is.True(errors.Is(err, fs.ErrNotExist))
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir())})
+	is.Equal(base, nil)
+	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir())})
 	is.NoErr(err)
+	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b2"})
 }
 
@@ -327,10 +339,12 @@ func TestReceiveMissingPack(t *testing.T) {
 	cache := virt.OS(t.TempDir())
 	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
 	is.NoErr(err)
+	is.True(first != "")
 	is.NoErr(os.RemoveAll(filepath.Join(hostDir, "packs")))
 
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
+	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
 	is.True(errors.Is(err, chunky.ErrStale))
+	is.Equal(revision, "")
 	des, err := os.ReadDir(filepath.Join(hostDir, "commits"))
 	is.NoErr(err)
 	is.Equal(len(des), 1)
@@ -340,7 +354,7 @@ func TestReceiveMissingPack(t *testing.T) {
 }
 
 // receive a hand-written stream of files, each "path" or "path=data"
-func receive(t testing.TB, host repos.Repo, files ...string) error {
+func receive(t testing.TB, host repos.Repo, files ...string) (string, error) {
 	t.Helper()
 	is := is.New(t)
 	buf := new(bytes.Buffer)
@@ -352,20 +366,28 @@ func receive(t testing.TB, host repos.Repo, files ...string) error {
 		is.NoErr(err)
 	}
 	is.NoErr(tw.Close())
-	_, err := chunky.New(logs.Discard()).Receive(context.Background(), buf, host)
-	return err
+	return chunky.New(logs.Discard()).Receive(context.Background(), buf, host)
 }
 
 func TestReceiveInvalid(t *testing.T) {
 	is := is.New(t)
 	hostDir := t.TempDir()
 	host := local.New(virt.OS(hostDir))
-	is.True(receive(t, host, "x") != nil)
-	is.True(receive(t, host, "other/x") != nil)
-	is.True(receive(t, host, "packs/a/b") != nil)
-	is.True(receive(t, host, "tags/latest=x") != nil)
-	_, err := os.Stat(filepath.Join(hostDir, "tags"))
+	revision, err := receive(t, host, "x")
+	is.True(err != nil)
+	is.Equal(revision, "")
+	revision, err = receive(t, host, "other/x")
+	is.True(err != nil)
+	is.Equal(revision, "")
+	revision, err = receive(t, host, "packs/a/b")
+	is.True(err != nil)
+	is.Equal(revision, "")
+	revision, err = receive(t, host, "tags/latest=x")
+	is.True(err != nil)
+	is.Equal(revision, "")
+	info, err := os.Stat(filepath.Join(hostDir, "tags"))
 	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(info, nil)
 }
 
 // cutBefore rewrites a stream up to the first file with prefix, ending
@@ -400,32 +422,38 @@ func TestReceiveCut(t *testing.T) {
 	chky := chunky.New(logs.Discard())
 	buf := new(bytes.Buffer)
 	w := stream.New(nopCloser{buf})
-	_, err := chky.Upload(ctx, &chunky.Upload{
+	uploaded, err := chky.Upload(ctx, &chunky.Upload{
 		From:  tree("a", strings.Repeat("b", 4096)),
 		To:    w,
 		Cache: virt.OS(t.TempDir()),
 	})
 	is.NoErr(err)
+	is.True(uploaded != "")
 	is.NoErr(w.Close())
 	full := buf.Bytes()
 
 	// Cut in half
 	hostDir := t.TempDir()
-	_, err = chky.Receive(ctx, bytes.NewReader(full[:len(full)/2]), local.New(virt.OS(hostDir)))
+	revision, err := chky.Receive(ctx, bytes.NewReader(full[:len(full)/2]), local.New(virt.OS(hostDir)))
 	is.True(err != nil)
-	_, err = os.Stat(filepath.Join(hostDir, "commits"))
+	is.Equal(revision, "")
+	info, err := os.Stat(filepath.Join(hostDir, "commits"))
 	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(info, nil)
 
 	// Cut between the commit and the tags
 	hostDir = t.TempDir()
-	_, err = chky.Receive(ctx, bytes.NewReader(cutBefore(t, full, "tags/")), local.New(virt.OS(hostDir)))
+	revision, err = chky.Receive(ctx, bytes.NewReader(cutBefore(t, full, "tags/")), local.New(virt.OS(hostDir)))
 	is.True(err != nil)
+	is.Equal(revision, "")
 	is.Equal(countPacks(t, hostDir), 1)
-	_, err = os.Stat(filepath.Join(hostDir, "commits"))
+	info, err = os.Stat(filepath.Join(hostDir, "commits"))
 	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(info, nil)
 
 	// The whole stream
 	hostDir = t.TempDir()
-	_, err = chky.Receive(ctx, bytes.NewReader(full), local.New(virt.OS(hostDir)))
+	revision, err = chky.Receive(ctx, bytes.NewReader(full), local.New(virt.OS(hostDir)))
 	is.NoErr(err)
+	is.Equal(revision, uploaded)
 }
