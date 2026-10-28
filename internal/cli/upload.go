@@ -111,22 +111,23 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 	return nil
 }
 
-// uploadFlags returns the flags that only apply when uploading a directory.
+// uploadFlags returns the flags set on in that only apply when uploading a
+// directory.
 // A stream already carries its tags and was packed by the sender.
-func (u *Upload) uploadFlags() (flags []string) {
-	if len(u.Tags) > 0 {
+func uploadFlags(in *Upload) (flags []string) {
+	if len(in.Tags) > 0 {
 		flags = append(flags, "--tags")
 	}
-	if !slices.Equal(u.Paths, []string{"."}) {
+	if !slices.Equal(in.Paths, []string{"."}) {
 		flags = append(flags, "--paths")
 	}
-	if u.LimitUpload != "" {
+	if in.LimitUpload != "" {
 		flags = append(flags, "--limit-upload")
 	}
-	if u.Concurrency != nil {
+	if in.Concurrency != nil {
 		flags = append(flags, "--concurrency")
 	}
-	if u.Base != "" {
+	if in.Base != "" {
 		flags = append(flags, "--base")
 	}
 	return flags
@@ -137,7 +138,7 @@ func (c *CLI) receive(ctx context.Context, in *Upload) error {
 	if in.To == "-" {
 		return errors.New("cli: upload can't stream from stdin to stdout")
 	}
-	if flags := in.uploadFlags(); len(flags) > 0 {
+	if flags := uploadFlags(in); len(flags) > 0 {
 		return fmt.Errorf("cli: %s can't be used when uploading from stdin", strings.Join(flags, ", "))
 	}
 
