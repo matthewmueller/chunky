@@ -125,13 +125,13 @@ On the client:
 ```go
 upload := &chunky.Upload{From: virt.OS(".")}
 
-// 1. Ask the host which files it's missing
+// 1. Send the manifest to the host, and read back the files it's missing
 manifest, err := chky.Manifest(ctx, upload)
-missing, err := askHost(manifest) // your transport, e.g. a JSON request
+err = json.NewEncoder(request).Encode(manifest)
+err = json.NewDecoder(response).Decode(&upload.Missing)
 
-// 2. Stream only those files
-upload.Missing = missing
-upload.To = stream.New(w)
+// 2. Stream only those files to the host
+upload.To = stream.New(w) // w is the body of a second request, like ssh stdin
 revision, err := chky.Upload(ctx, upload)
 err = upload.To.Close()
 ```
@@ -139,11 +139,14 @@ err = upload.To.Close()
 On the host:
 
 ```go
-// 1. Answer with the files the repository is missing
+// 1. Read the client's manifest, and answer with the files the repository is missing
+var manifest chunky.Manifest
+err := json.NewDecoder(request).Decode(&manifest)
 missing, err := chky.Missing(ctx, repo, manifest)
+err = json.NewEncoder(response).Encode(missing)
 
-// 2. Receive the stream
-revision, err := chky.Receive(ctx, r, repo)
+// 2. Receive the client's stream
+revision, err := chky.Receive(ctx, r, repo) // r is the second request's body
 ```
 
 `Manifest` is a plain map of path to hash, so encode it however your transport does. Skip step 1 to use a local `Cache` instead, like the CLI. `Receive` only writes the commit once the whole stream arrives, and refuses with `ErrStale` if the upload references files the repository doesn't have.
