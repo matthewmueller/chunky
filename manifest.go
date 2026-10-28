@@ -11,9 +11,12 @@ import (
 )
 
 // Manifest maps file paths to their hashes. A sender sends its manifest to a
-// receiver, which answers with the files it's missing, so the sender only
-// uploads those.
+// receiver, which answers with the files it already has, so the sender only
+// uploads the rest.
 type Manifest map[string]string
+
+// File is a file in a commit, with the pack that holds it
+type File = commits.File
 
 // Manifest hashes the files the upload would send, without sending them
 func (c *Client) Manifest(ctx context.Context, in *Upload) (Manifest, error) {
@@ -30,40 +33,25 @@ func (c *Client) Manifest(ctx context.Context, in *Upload) (Manifest, error) {
 	return m, nil
 }
 
-// Missing returns the files in the manifest that repo doesn't have, for
-// Upload.Missing
-func (c *Client) Missing(ctx context.Context, repo repos.Repo, m Manifest) (Manifest, error) {
-	have, err := index(ctx, repo)
-	if err != nil {
-		return nil, err
-	}
-	missing := Manifest{}
-	for fpath, hash := range m {
-		if _, ok := have[file{fpath, hash}]; !ok {
-			missing[fpath] = hash
-		}
-	}
-	return missing, nil
-}
-
-// file is a file's path and hash. Packs look files up by path, so the hash
-// alone doesn't find a file.
-type file struct{ path, hash string }
-
-// index the files in every commit of repo to the pack that holds them
-func index(ctx context.Context, repo repos.Repo) (map[file]string, error) {
-	have := map[file]string{}
+// Matches returns the files in the manifest that repo already has, from any
+// commit, for Upload.Matches
+func (c *Client) Matches(ctx context.Context, repo repos.Repo, m Manifest) ([]*File, error) {
 	all, err := commits.ReadAll(ctx, repo)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return have, nil
+			return []*File{}, nil
 		}
-		return nil, fmt.Errorf("chunky: unable to index the repository: %w", err)
+		return nil, fmt.Errorf("chunky: unable to read commits: %w", err)
 	}
+	matches := []*File{}
+	matched := map[string]bool{}
 	for _, commit := range all {
-		for _, f := range commit.Files() {
-			have[file{f.Path, f.Id}] = f.PackId
+		for _, file := range commit.Files() {
+			if m[file.Path] == file.Id && !matched[file.Path] {
+				matched[file.Path] = true
+				matches = append(matches, file)
+			}
 		}
 	}
-	return have, nil
+	return matches, nil
 }

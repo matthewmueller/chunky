@@ -31,10 +31,9 @@ type Upload struct {
 	// none)
 	Cache repos.FS
 
-	// Missing lists the files To is missing, from Client.Missing. When set,
-	// only those are sent and the rest are referenced for Receive to resolve.
-	// It replaces Cache, so they can't be used together.
-	Missing Manifest
+	// Matches lists files To already has, from Client.Matches. They're added
+	// to the cache, so only the rest are sent.
+	Matches []*File
 
 	User   string
 	Tags   []string
@@ -66,9 +65,6 @@ func (in *Upload) validate() (err error) {
 	// Required fields
 	if in.From == nil {
 		err = errors.Join(err, errors.New("missing from filesystem"))
-	}
-	if in.Cache != nil && in.Missing != nil {
-		err = errors.Join(err, errors.New("cache and missing can't be used together"))
 	}
 
 	// Default to the current user
@@ -184,7 +180,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	log := logs.Scope(c.log)
 
 	// Without a cache, remember files for this upload only. Don't default
-	// in.Cache, so the same Upload can be reused after setting Missing.
+	// in.Cache, so the same Upload can be reused after Manifest.
 	cacheFS := in.Cache
 	if cacheFS == nil {
 		cacheFS = virt.Tree{}
@@ -192,6 +188,9 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	cache, err := caches.Load(c.log, cacheFS)
 	if err != nil {
 		return "", fmt.Errorf("unable to load the cache: %w", err)
+	}
+	for _, file := range in.Matches {
+		cache.Put(file)
 	}
 
 	// Sync the cache with To when we can read it
@@ -229,16 +228,6 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 		lstat, err := in.From.Lstat(fpath)
 		if err != nil {
 			return fmt.Errorf("unable to lstat file %q: %w", fpath, err)
-		}
-
-		// Reference the files To has. Receive resolves their packs.
-		if in.Missing != nil && in.Missing[fpath] != fileHash {
-			commit.Add(&commits.File{
-				Path: fpath,
-				Id:   fileHash,
-				Size: uint64(lstat.Size()),
-			})
-			return nil
 		}
 
 		// Create a reader for the file data, handling symlinks

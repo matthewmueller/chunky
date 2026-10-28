@@ -118,20 +118,19 @@ type Repo interface {
 
 ### Uploading over a one-way stream
 
-Ask the host which files it's missing, then stream only those.
+Ask the host which files it already has, then stream only the rest.
 
 On the client:
 
 ```go
 upload := &chunky.Upload{From: virt.OS(".")}
 
-// 1. Send the manifest to the host, and read back the files it's missing.
-// Skip this to use a local Cache instead.
+// 1. Send the manifest to the host, and read back the files it already has
 manifest, err := chky.Manifest(ctx, upload) // a map of path to hash
 err = json.NewEncoder(request).Encode(manifest)
-err = json.NewDecoder(response).Decode(&upload.Missing)
+err = json.NewDecoder(response).Decode(&upload.Matches)
 
-// 2. Stream only those files to the host
+// 2. Stream the rest of the files to the host
 upload.To = stream.New(w) // w is the body of a second request, like ssh stdin
 revision, err := chky.Upload(ctx, upload)
 err = upload.To.Close()
@@ -140,14 +139,14 @@ err = upload.To.Close()
 On the host:
 
 ```go
-// 1. Read the client's manifest, and answer with the files the repository is missing
+// 1. Read the client's manifest, and answer with the files the repository already has
 var manifest chunky.Manifest
 err := json.NewDecoder(request).Decode(&manifest)
-missing, err := chky.Missing(ctx, repo, manifest)
-err = json.NewEncoder(response).Encode(missing)
+matches, err := chky.Matches(ctx, repo, manifest)
+err = json.NewEncoder(response).Encode(matches)
 
 // 2. Receive the client's stream. The commit is only written once the whole
-// stream arrives, and ErrStale means it references files the repo doesn't have.
+// stream arrives, and ErrStale means it references packs the repo doesn't have.
 revision, err := chky.Receive(ctx, r, repo) // r is the second request's body
 ```
 

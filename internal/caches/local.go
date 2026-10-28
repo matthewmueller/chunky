@@ -171,6 +171,12 @@ func (c *Local) Add(commit *commits.Commit) error {
 	return nil
 }
 
+// Put a file in the cache for this upload only, without writing it to the
+// cache's filesystem
+func (c *Local) Put(file *commits.File) {
+	c.files[cacheKey(file.Path, file.Id)] = file
+}
+
 func (c *Local) Get(path, hash string) (file *commits.File, ok bool) {
 	file, ok = c.files[cacheKey(path, hash)]
 	return file, ok

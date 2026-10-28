@@ -1,9 +1,9 @@
 # 0.7.0 / 2026-10-28
 
-- add: uploading without a cache by asking the receiver what it's missing first. `chky.Manifest(ctx, upload)` lists the files and hashes on the client, `chky.Missing(ctx, repo, manifest)` answers with the ones the repository doesn't have, and `Upload.Missing` sends only those. Encode the `Manifest` map with whatever your transport uses, like JSON
+- add: uploading without a cache by asking the receiver what it already has. `chky.Manifest(ctx, upload)` lists the files and hashes on the client, `chky.Matches(ctx, repo, manifest)` answers with the ones the repository has from any commit, and `Upload.Matches` adds them to the cache so only the rest are sent. Encode the `Manifest` and matches with whatever your transport uses, like JSON
 - add: `Upload.Cache` is optional
 - fix: `download`, `show` and `FindCommit` failed for tags made with `chunky tag`
-- **BREAKING:** remove `Upload.Base` and `chunky upload --base`. Use `Upload.Missing` instead
+- **BREAKING:** replace `Upload.Base` with `Upload.Matches`, and remove `chunky upload --base`
 
 # 0.6.0 / 2026-10-28
 

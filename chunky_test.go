@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"io/fs"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -304,29 +303,39 @@ func TestReceive(t *testing.T) {
 	is.Equal(countPacks(t, hostDir), 2)
 }
 
-// missing asks host which of the upload's files it's missing
-func missing(ctx context.Context, host repos.Repo, in *chunky.Upload) (chunky.Manifest, error) {
+// matches asks host which of the upload's files it already has
+func matches(ctx context.Context, host repos.Repo, in *chunky.Upload) ([]*chunky.File, error) {
 	chky := chunky.New(logs.Discard())
 	manifest, err := chky.Manifest(ctx, in)
 	if err != nil {
 		return nil, err
 	}
-	return chky.Missing(ctx, host, manifest)
+	return chky.Matches(ctx, host, manifest)
 }
 
-func TestMissing(t *testing.T) {
+// paths of the files, sorted
+func paths(files []*chunky.File) (paths []string) {
+	for _, file := range files {
+		paths = append(paths, file.Path)
+	}
+	slices.Sort(paths)
+	return paths
+}
+
+func TestMatches(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
 	hostDir := t.TempDir()
 	host := local.New(virt.OS(hostDir))
 
-	// An empty host is missing everything
-	// The same Upload asks for Missing and then uploads, like the Readme
+	// An empty host has nothing. The same Upload asks for Matches and then
+	// uploads, like the Readme.
 	upload := &chunky.Upload{From: tree("a", "b")}
-	m, err := missing(ctx, host, upload)
+	files, err := matches(ctx, host, upload)
 	is.NoErr(err)
-	is.Equal(slices.Sorted(maps.Keys(m)), []string{"a.txt", "b.txt"})
-	upload.Missing = m
+	is.True(files != nil)
+	is.Equal(len(files), 0)
+	upload.Matches = files
 	revision, err := deploy(t, host, upload)
 	is.NoErr(err)
 	is.True(revision != "")
@@ -335,42 +344,52 @@ func TestMissing(t *testing.T) {
 
 	// A client without a cache only sends the changed file
 	upload = &chunky.Upload{From: tree("a", "b2")}
-	m, err = missing(ctx, host, upload)
+	files, err = matches(ctx, host, upload)
 	is.NoErr(err)
-	is.Equal(slices.Sorted(maps.Keys(m)), []string{"b.txt"})
-	upload.Missing = m
+	is.Equal(paths(files), []string{"a.txt"})
+	upload.Matches = files
 	revision, err = deploy(t, host, upload)
 	is.NoErr(err)
 	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b2"})
 	is.Equal(countPacks(t, hostDir), 2)
 
-	// Files from older commits count too, so going back sends nothing
-	upload = &chunky.Upload{From: tree("a", "b")}
-	m, err = missing(ctx, host, upload)
+	// Files from older commits match too, so going back sends nothing. Matches
+	// also seed a cache, which then skips them on its own.
+	cache := virt.Tree{}
+	upload = &chunky.Upload{From: tree("a", "b"), Cache: cache}
+	files, err = matches(ctx, host, upload)
 	is.NoErr(err)
-	is.True(m != nil)
-	is.Equal(len(m), 0)
-	upload.Missing = m
+	is.Equal(paths(files), []string{"a.txt", "b.txt"})
+	upload.Matches = files
 	revision, err = deploy(t, host, upload)
 	is.NoErr(err)
 	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b"})
 	is.Equal(countPacks(t, hostDir), 2)
-
-	// Missing replaces the cache
-	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m, Cache: virt.Tree{}})
-	is.True(err != nil)
-	is.Equal(revision, "")
+	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
+	is.NoErr(err)
+	is.True(revision != "")
+	is.Equal(countPacks(t, hostDir), 2)
 }
 
-func TestReceiveMissingFile(t *testing.T) {
+func TestReceiveStaleMatches(t *testing.T) {
 	is := is.New(t)
+	ctx := context.Background()
+	other := local.New(virt.OS(t.TempDir()))
+	revision, err := deploy(t, other, &chunky.Upload{From: tree("a", "b")})
+	is.NoErr(err)
+	is.True(revision != "")
+
+	// Matches from another host reference packs this host doesn't have
 	hostDir := t.TempDir()
 	host := local.New(virt.OS(hostDir))
-
-	// The client was told the host has everything, but it has nothing
-	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: chunky.Manifest{}})
+	upload := &chunky.Upload{From: tree("a", "b")}
+	files, err := matches(ctx, other, upload)
+	is.NoErr(err)
+	is.Equal(paths(files), []string{"a.txt", "b.txt"})
+	upload.Matches = files
+	revision, err = deploy(t, host, upload)
 	is.True(errors.Is(err, chunky.ErrStale))
 	is.Equal(revision, "")
 	info, err := os.Stat(filepath.Join(hostDir, "commits"))
