@@ -171,16 +171,6 @@ func (c *Local) Add(commit *commits.Commit) error {
 	return nil
 }
 
-// Newest returns the most recently created commit, or nil if the cache is empty
-func (c *Local) Newest() (newest *commits.Commit) {
-	for _, commit := range c.localCommits {
-		if newest == nil || commit.CreatedAt().After(newest.CreatedAt()) {
-			newest = commit
-		}
-	}
-	return newest
-}
-
 func (c *Local) Get(path, hash string) (file *commits.File, ok bool) {
 	file, ok = c.files[cacheKey(path, hash)]
 	return file, ok

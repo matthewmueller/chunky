@@ -7,281 +7,88 @@ import (
 	"errors"
 	"io"
 	"io/fs"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/matryer/is"
-	"github.com/matthewmueller/chunky"
 	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/chunky/repos/local"
 	"github.com/matthewmueller/chunky/repos/stream"
-	"github.com/matthewmueller/logs"
-	"github.com/matthewmueller/virt"
 )
-
-func tree(a, b string) virt.Tree {
-	return virt.Tree{
-		"a.txt": &virt.File{Data: []byte(a), Mode: 0644},
-		"b.txt": &virt.File{Data: []byte(b), Mode: 0644},
-	}
-}
-
-// deploy uploads through a pipe into Receive, like a client writing to a
-// host's stdin, and returns the received commit id
-func deploy(t testing.TB, host repos.Repo, in *chunky.Upload) (string, error) {
-	t.Helper()
-	is := is.New(t)
-	ctx := context.Background()
-	pr, pw := io.Pipe()
-	type result struct {
-		id  string
-		err error
-	}
-	done := make(chan result, 1)
-	go func() {
-		id, err := stream.Receive(ctx, pr, host)
-		// Unblock the client, like a host exiting
-		pr.CloseWithError(errors.Join(err, io.ErrClosedPipe))
-		done <- result{id, err}
-	}()
-	w := stream.New(pw)
-	in.To = w
-	uploaded, upErr := chunky.New(logs.Discard()).Upload(ctx, in)
-	upErr = errors.Join(upErr, w.Close())
-	res := <-done
-	if res.err != nil {
-		is.True(upErr != nil) // the upload fails with the receive
-		return "", res.err
-	}
-	is.NoErr(upErr)
-	is.Equal(uploaded, res.id)
-	return res.id, nil
-}
-
-func countPacks(t testing.TB, dir string) int {
-	t.Helper()
-	is := is.New(t)
-	des, err := os.ReadDir(filepath.Join(dir, "packs"))
-	is.True(err == nil || errors.Is(err, fs.ErrNotExist))
-	return len(des)
-}
-
-func readLatest(t testing.TB, host repos.Repo) virt.Map {
-	t.Helper()
-	is := is.New(t)
-	dir := t.TempDir()
-	is.NoErr(chunky.New(logs.Discard()).Download(context.Background(), &chunky.Download{
-		From:     host,
-		To:       virt.OS(dir),
-		Revision: "latest",
-	}))
-	a, err := os.ReadFile(filepath.Join(dir, "a.txt"))
-	is.NoErr(err)
-	b, err := os.ReadFile(filepath.Join(dir, "b.txt"))
-	is.NoErr(err)
-	return virt.Map{"a.txt": string(a), "b.txt": string(b)}
-}
-
-func TestRoundTrip(t *testing.T) {
-	is := is.New(t)
-	hostDir := t.TempDir()
-	host := local.New(virt.OS(hostDir))
-	cache := virt.OS(t.TempDir())
-
-	_, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
-	is.NoErr(err)
-	is.Equal(readLatest(t, host), virt.Map{"a.txt": "a", "b.txt": "b"})
-	is.Equal(countPacks(t, hostDir), 1)
-
-	// A warm client defaults to its last upload as the base
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
-	is.NoErr(err)
-	is.Equal(readLatest(t, host), virt.Map{"a.txt": "a", "b.txt": "b2"})
-	is.Equal(countPacks(t, hostDir), 2)
-}
-
-func TestFreshBase(t *testing.T) {
-	is := is.New(t)
-	ctx := context.Background()
-	hostDir := t.TempDir()
-	host := local.New(virt.OS(hostDir))
-	_, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(t.TempDir())})
-	is.NoErr(err)
-
-	// A fresh client reads the base as bytes, then sends only the changed file
-	latest, err := chunky.New(logs.Discard()).FindCommit(ctx, &chunky.FindCommit{Repo: host, Revision: "latest"})
-	is.NoErr(err)
-	data, err := latest.Pack()
-	is.NoErr(err)
-	base, err := chunky.UnpackCommit(data)
-	is.NoErr(err)
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir()), Base: base})
-	is.NoErr(err)
-	is.Equal(readLatest(t, host), virt.Map{"a.txt": "a", "b.txt": "b2"})
-	is.Equal(countPacks(t, hostDir), 2)
-}
-
-func TestMissingBase(t *testing.T) {
-	is := is.New(t)
-	ctx := context.Background()
-	cacheDir := t.TempDir()
-	_, err := deploy(t, local.New(virt.OS(t.TempDir())), &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(cacheDir)})
-	is.NoErr(err)
-
-	// The cached base is from another host, so it's refused before any packs
-	hostDir := t.TempDir()
-	host := local.New(virt.OS(hostDir))
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(cacheDir)})
-	is.True(errors.Is(err, stream.ErrStale))
-	_, err = os.Stat(filepath.Join(hostDir, "packs"))
-	is.True(errors.Is(err, fs.ErrNotExist))
-
-	// Retry like dot: wipe the cache and read the base, which is missing too
-	_, err = chunky.New(logs.Discard()).FindCommit(ctx, &chunky.FindCommit{Repo: host, Revision: "latest"})
-	is.True(errors.Is(err, fs.ErrNotExist))
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir())})
-	is.NoErr(err)
-	is.Equal(readLatest(t, host), virt.Map{"a.txt": "a", "b.txt": "b2"})
-}
-
-func TestMissingPack(t *testing.T) {
-	is := is.New(t)
-	hostDir := t.TempDir()
-	host := local.New(virt.OS(hostDir))
-	cache := virt.OS(t.TempDir())
-	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: cache})
-	is.NoErr(err)
-	is.NoErr(os.RemoveAll(filepath.Join(hostDir, "packs")))
-
-	// a.txt still points at the deleted pack
-	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: cache})
-	is.True(errors.Is(err, stream.ErrStale))
-	des, err := os.ReadDir(filepath.Join(hostDir, "commits"))
-	is.NoErr(err)
-	is.Equal(len(des), 1)
-	latest, err := os.ReadFile(filepath.Join(hostDir, "tags", "latest"))
-	is.NoErr(err)
-	is.Equal(string(latest), first)
-}
-
-// receive a hand-written tar of entries, each "name" or "name=data"
-func receive(t testing.TB, host repos.Repo, typeflag byte, entries ...string) error {
-	t.Helper()
-	is := is.New(t)
-	buf := new(bytes.Buffer)
-	tw := tar.NewWriter(buf)
-	for _, entry := range entries {
-		name, data, _ := strings.Cut(entry, "=")
-		is.NoErr(tw.WriteHeader(&tar.Header{Typeflag: typeflag, Name: name, Mode: 0644, Size: int64(len(data))}))
-		_, err := tw.Write([]byte(data))
-		is.NoErr(err)
-	}
-	is.NoErr(tw.Close())
-	_, err := stream.Receive(context.Background(), buf, host)
-	return err
-}
-
-func TestInvalidEntries(t *testing.T) {
-	is := is.New(t)
-	root := t.TempDir()
-	hostDir := filepath.Join(root, "host")
-	host := local.New(virt.OS(hostDir))
-	is.True(receive(t, host, tar.TypeReg, "../x") != nil)
-	is.True(receive(t, host, tar.TypeReg, "/x") != nil)
-	is.True(receive(t, host, tar.TypeReg, "packs/../../x") != nil)
-	is.True(receive(t, host, tar.TypeReg, "packs/a/b") != nil)
-	is.True(receive(t, host, tar.TypeReg, "other/x") != nil)
-	is.True(receive(t, host, tar.TypeReg, "base=../x") != nil)
-	is.True(receive(t, host, tar.TypeSymlink, "packs/x") != nil)
-	is.True(receive(t, host, tar.TypeReg, "tags/latest=x") != nil)
-	is.True(receive(t, host, tar.TypeReg, "packs/x", "base") != nil)
-	_, err := os.Stat(filepath.Join(root, "x"))
-	is.True(errors.Is(err, fs.ErrNotExist))
-	_, err = os.Stat(filepath.Join(hostDir, "tags"))
-	is.True(errors.Is(err, fs.ErrNotExist))
-}
-
-func TestModeMasked(t *testing.T) {
-	is := is.New(t)
-	hostDir := t.TempDir()
-	buf := new(bytes.Buffer)
-	tw := tar.NewWriter(buf)
-	is.NoErr(tw.WriteHeader(&tar.Header{Typeflag: tar.TypeReg, Name: "packs/x", Mode: 0o4755}))
-	is.NoErr(tw.Close())
-	_, err := stream.Receive(context.Background(), buf, local.New(virt.OS(hostDir)))
-	is.True(err != nil) // no commit
-	info, err := os.Stat(filepath.Join(hostDir, "packs", "x"))
-	is.NoErr(err)
-	is.Equal(info.Mode(), fs.FileMode(0755))
-}
-
-// rewrite a stream, stopping before the first entry with prefix. It ends at
-// an entry boundary without a trailer, which archive/tar reads as a clean
-// io.EOF.
-func cutBefore(t testing.TB, data []byte, prefix string) []byte {
-	t.Helper()
-	is := is.New(t)
-	tr := tar.NewReader(bytes.NewReader(data))
-	buf := new(bytes.Buffer)
-	tw := tar.NewWriter(buf)
-	for {
-		header, err := tr.Next()
-		is.NoErr(err)
-		if strings.HasPrefix(header.Name, prefix) {
-			break
-		}
-		is.NoErr(tw.WriteHeader(header))
-		_, err = io.Copy(tw, tr)
-		is.NoErr(err)
-	}
-	is.NoErr(tw.Flush())
-	return buf.Bytes()
-}
 
 type nopCloser struct{ io.Writer }
 
 func (nopCloser) Close() error { return nil }
 
+// readAll reads a stream into a map of path to data
+func readAll(r io.Reader) (map[string]string, error) {
+	files := map[string]string{}
+	err := stream.Read(r, func(file *repos.File) error {
+		files[file.Path] = string(file.Data)
+		return nil
+	})
+	return files, err
+}
+
+// write a hand-written tar with one entry
+func write(t testing.TB, header *tar.Header) []byte {
+	t.Helper()
+	is := is.New(t)
+	buf := new(bytes.Buffer)
+	tw := tar.NewWriter(buf)
+	is.NoErr(tw.WriteHeader(header))
+	is.NoErr(tw.Close())
+	return buf.Bytes()
+}
+
+func TestRoundTrip(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	buf := new(bytes.Buffer)
+	w := stream.New(nopCloser{buf})
+	is.NoErr(w.Upload(ctx, &repos.File{Path: "packs/a", Data: []byte("a"), Mode: 0644}))
+	is.NoErr(w.Upload(ctx, &repos.File{Path: "tags/latest", Data: []byte("b"), Mode: 0644}))
+	is.NoErr(w.Close())
+	files, err := readAll(buf)
+	is.NoErr(err)
+	is.Equal(files, map[string]string{"packs/a": "a", "tags/latest": "b"})
+}
+
+func TestInvalid(t *testing.T) {
+	is := is.New(t)
+	_, err := readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "../x"})))
+	is.True(err != nil)
+	_, err = readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "/x"})))
+	is.True(err != nil)
+	_, err = readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "packs/../../x"})))
+	is.True(err != nil)
+	_, err = readAll(bytes.NewReader(write(t, &tar.Header{Typeflag: tar.TypeSymlink, Name: "packs/x", Linkname: "/etc/passwd"})))
+	is.True(err != nil)
+}
+
+func TestModeMasked(t *testing.T) {
+	is := is.New(t)
+	data := write(t, &tar.Header{Typeflag: tar.TypeReg, Name: "packs/x", Mode: 0o4755})
+	is.NoErr(stream.Read(bytes.NewReader(data), func(file *repos.File) error {
+		is.Equal(file.Mode, fs.FileMode(0755))
+		return nil
+	}))
+}
+
+// archive/tar reads a stream cut between files as a clean end, and one cut
+// mid-file as an unexpected EOF
 func TestCut(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
 	buf := new(bytes.Buffer)
 	w := stream.New(nopCloser{buf})
-	_, err := chunky.New(logs.Discard()).Upload(ctx, &chunky.Upload{
-		From:  tree("a", strings.Repeat("b", 4096)),
-		To:    w,
-		Cache: virt.OS(t.TempDir()),
-	})
-	is.NoErr(err)
-	is.NoErr(w.Close())
+	is.NoErr(w.Upload(ctx, &repos.File{Path: "packs/a", Data: []byte("a"), Mode: 0644}))
+	boundary := buf.Len() + 511 // the next header writes the padding
+	is.NoErr(w.Upload(ctx, &repos.File{Path: "packs/b", Data: []byte("b"), Mode: 0644}))
 	full := buf.Bytes()
 
-	// Cut mid-entry
-	hostDir := t.TempDir()
-	_, err = stream.Receive(ctx, bytes.NewReader(full[:len(full)/2]), local.New(virt.OS(hostDir)))
-	is.True(errors.Is(err, io.ErrUnexpectedEOF))
-	_, err = os.Stat(filepath.Join(hostDir, "commits"))
-	is.True(errors.Is(err, fs.ErrNotExist))
-
-	// Cut cleanly between the packs and the commit
-	hostDir = t.TempDir()
-	_, err = stream.Receive(ctx, bytes.NewReader(cutBefore(t, full, "commits/")), local.New(virt.OS(hostDir)))
-	is.True(err != nil)
-	is.Equal(countPacks(t, hostDir), 1)
-	_, err = os.Stat(filepath.Join(hostDir, "commits"))
-	is.True(errors.Is(err, fs.ErrNotExist))
-
-	// Cut cleanly between the commit and the tags
-	hostDir = t.TempDir()
-	_, err = stream.Receive(ctx, bytes.NewReader(cutBefore(t, full, "tags/")), local.New(virt.OS(hostDir)))
-	is.True(err != nil)
-	_, err = os.Stat(filepath.Join(hostDir, "commits"))
-	is.True(errors.Is(err, fs.ErrNotExist))
-
-	// The whole stream succeeds
-	hostDir = t.TempDir()
-	_, err = stream.Receive(ctx, bytes.NewReader(full), local.New(virt.OS(hostDir)))
+	files, err := readAll(bytes.NewReader(full[:boundary]))
 	is.NoErr(err)
+	is.Equal(files, map[string]string{"packs/a": "a"})
+
+	_, err = readAll(bytes.NewReader(full[:boundary+100]))
+	is.True(errors.Is(err, io.ErrUnexpectedEOF))
 }

@@ -157,11 +157,11 @@ revision, err := chunky.New(logs.Default()).Upload(ctx, &chunky.Upload{
 
 The HTTP repository is only available through the Go API for now. The CLI supports local and SFTP repositories.
 
-### Deploying over a one-way stream
+### Uploading over a one-way stream
 
-The `repos/stream` package uploads over any one-way pipe, like SSH stdin or an HTTP request body. The client sends files on top of a **base**: a commit the host already has. Files that match the base are referenced instead of sent.
+The `repos/stream` package carries an upload over any one-way pipe, like SSH stdin or an HTTP request body, and `Receive` writes it into a repository on the other end.
 
-On the client, write to the pipe. A fresh client reads the host's `latest` commit as bytes first and passes it as `Base`. A warm client can leave `Base` empty, since each upload is cached and becomes the next base.
+The client can't read the repository through a pipe, so it only skips files it already has in its cache. A fresh client can read the repository's latest commit separately and pass it as `Base`:
 
 ```go
 import "github.com/matthewmueller/chunky/repos/stream"
@@ -183,14 +183,17 @@ On the host, receive the stream into a repository:
 
 ```go
 repo := local.New(virt.OS("/var/lib/my-repo"))
-revision, err := stream.Receive(ctx, os.Stdin, repo)
-if errors.Is(err, stream.ErrStale) {
-	// The host is missing the base or one of its packs. The client should
-	// clear its cache, read the base again and retry once.
+revision, err := chunky.New(logs.Default()).Receive(ctx, &chunky.Receive{
+	From: os.Stdin,
+	To:   repo,
+})
+if errors.Is(err, chunky.ErrStale) {
+	// The upload references a pack the repository doesn't have. The client
+	// should clear its cache, read the base again and retry once.
 }
 ```
 
-`Receive` refuses a missing base before any packs are written. It only writes the commit and tags once the stream ends with `tags/latest` naming the commit, so a cut or refused stream leaves at most unreferenced packs.
+`Receive` only writes the commit and its tags once the stream ends with the latest tag, so a cut or refused stream leaves at most unreferenced packs.
 
 ## Similar Tools
 
@@ -200,14 +203,13 @@ if errors.Is(err, stream.ErrStale) {
 
 ## Adding New Repositories
 
-Chunky currently supports four repository backends:
+Chunky currently supports three repository backends:
 
 1. `Local`: Store your repository in your local filesystem
 2. `SFTP`: Store your repository on a remote server
 3. `HTTP`: Store your repository on a remote server that serves it with `http.Handler`
-4. `Stream`: Write-only. Send an upload over a one-way pipe to `stream.Receive`
 
-I'd encourage you to contribute new repository backends to Chunky. The interfaces are quite straightforward to implement:
+I'd encourage you to contribute new repository backends to Chunky. A backend you can only write to, like `repos/stream`, implements `Writer`. One you can also read from implements `Repo`:
 
 ```go
 type Writer interface {

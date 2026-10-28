@@ -1,7 +1,7 @@
 # 0.6.0 / 2026-10-27
 
-- add: `repos/stream` for uploading over a one-way pipe like SSH stdin. `stream.New(w)` writes, `stream.Receive(ctx, r, repo)` reads and returns `stream.ErrStale` when the host is missing the base
-- add: `Upload.Base` to upload on top of a commit the repository already has, without reading it
+- add: uploading over a one-way pipe like SSH stdin. `Upload` to `stream.New(w)`, then `Client.Receive` on the other end, which returns `ErrStale` when the upload references a pack the repository doesn't have
+- add: `Upload.Base` to skip the files of a commit the repository already has, when it can't be read
 - add: `chunky.UnpackCommit`, the inverse of `(*Commit).Pack`
 - add: `repos.Writer`, a write-only repository that `repos.Repo` embeds
 - fix: syncing the upload cache stopped at the first cached commit, so it missed newer commits and never pruned deleted ones
