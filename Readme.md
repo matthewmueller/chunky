@@ -1,200 +1,137 @@
 # Chunky
 
-Efficiently store versioned data.
+[![Go Reference](https://pkg.go.dev/badge/github.com/matthewmueller/chunky.svg)](https://pkg.go.dev/github.com/matthewmueller/chunky)
 
-![CleanShot 2024-11-04 at 22 49 26@2x](https://github.com/user-attachments/assets/eb0c85c0-4c15-4032-b656-bcc48eaa01d2)
+Chunky uploads directories to remote servers and keeps every version, like rsync with history. Uploads only send the files that changed, and content-defined chunking keeps a repository of every version smaller than the original directory.
 
-Chunky was built to ship code and binaries to remote servers. Then once on those remote servers, Chunky helps you quickly swap versions.
+![Chunky](https://github.com/user-attachments/assets/eb0c85c0-4c15-4032-b656-bcc48eaa01d2)
 
-Chunky is like if rsync and git had a baby.
+## Install
 
-Chunky uses content-defined-chunking (CDC) powered by Restic's [chunker library](https://github.com/restic/chunker) to efficiently store data on disk. When you upload new versions, only the files that have changed will be uploaded. Preliminary estimates suggest that repos are about half the size of the original codebase, while storing every version!
-
-**Status**: Early release. It's working and I'm using it in production, but it lacks tests and at this stage I mostly optimized the binary files for understandability. I think there's a more efficient way to link and store commits and packs. I'd encourage you to look for ways to make Chunky more efficient!
-
-## Examples
-
-### Upload a directory
-
-```bash
-$ chunky upload . vagrant@127.0.0.1:2222/my-repo
-```
-
-This example uploads the entire current directory to the `vagrant@127.0.0.1:2222/my-repo` remote repo.
-
-This will create a directory `my-repo` in the `$HOME/vagrant` directory on your remote machine.
-
-### Upload over SSH without SFTP
-
-```bash
-$ chunky upload . - | ssh vagrant@127.0.0.1 -p 2222 chunky upload - my-repo
-```
-
-Use `-` as the repository to stream the upload to stdout, and `-` as the directory to receive one from stdin. The remote machine needs `chunky` installed.
-
-The upload only skips files in the local cache for `-`. If you upload to a different machine, the receiver refuses the upload as stale. Run `chunky cache-prune -` and try again. To skip files without a cache, ask the receiver which files it's missing first with the Go API, as below.
-
-### List all versions
-
-```bash
-$ chunky list vagrant@127.0.0.1:2222/my-repo
-20241105033915 (latest) 69kB Matt Mueller 39 minutes ago
-20241105033613          69kB Matt Mueller 42 minutes ago
-20241105033612          69kB Matt Mueller 42 minutes ago
-20241105033611          69kB Matt Mueller 42 minutes ago
-20241105033610 (v0.0.0) 69kB Matt Mueller 42 minutes ago
-20241105033609          69kB Matt Mueller 42 minutes ago
-20241105033607          69kB Matt Mueller 42 minutes ago
-20241105032915          68kB Matt Mueller 49 minutes ago
-```
-
-This command lists all the versions on the `vagrant@127.0.0.1:2222/my-repo` remote repo.
-
-### Tag a revision
-
-```bash
-$ chunky tag vagrant@127.0.0.1:2222/my-repo 20241105033612 v0.0.1
-```
-
-This command tags the `20241105033612` commit with the `v0.0.1` tag
-
-```bash
-$ chunky list vagrant@127.0.0.1:2222/my-repo
-20241105033915 (latest) 69kB Matt Mueller 39 minutes ago
-20241105033613          69kB Matt Mueller 42 minutes ago
-20241105033612 (v0.0.1) 69kB Matt Mueller 42 minutes ago
-20241105033611          69kB Matt Mueller 42 minutes ago
-20241105033610 (v0.0.0) 69kB Matt Mueller 42 minutes ago
-20241105033609          69kB Matt Mueller 42 minutes ago
-20241105033607          69kB Matt Mueller 42 minutes ago
-20241105032915          68kB Matt Mueller 49 minutes ago
-```
-
-### Download a version
-
-```bash
-$ chunky download vagrant@127.0.0.1:2222/my-repo v0.0.1 my-repo-v1
-```
-
-This command downloads the `v0.0.1` revision from the `vagrant@127.0.0.1:2222/my-repo` remote repo into the `my-repo-v1` directory.
-
-By default this overwrites any existing file, but will not delete local files that no longer exist in the remote repository. To fully sync `my-repo-v1` with the remote repository, include the `--sync` flag.
-
-```bash
-$ chunky download --sync vagrant@127.0.0.1:2222/my-repo v0.0.1 my-repo-v1
-```
-
-## Usage
-
-Chunky ships with a CLI and programmatic API.
-
-### CLI
-
-You can install the CLI using Go with:
-
-```bash
+```sh
 go install github.com/matthewmueller/chunky/cmd/chunky@latest
 ```
 
-If that succeeds, you should be able to type `chunky` and see the help menu below.
+## Example
 
-```bash
-$ chunky
+Upload the current directory to a repository over SFTP:
 
-  Usage:
-    $ chunky [command]
-
-  Description:
-    efficiently store versioned data
-
-  Commands:
-    cat       show a file
-    create    create a new repository
-    download  download a directory from a repository
-    list      list repository
-    show      show a revision
-    tag       tag a commit
-    upload    upload a directory to a repository
-
-  Advanced Commands:
-    cat-commit  show a commit
-    cat-pack    show a pack
-    cat-tag     show a tag
-    clean       clean a repository and local cache
-
+```sh
+chunky upload . vagrant@127.0.0.1:2222/my-repo
 ```
 
-### API
+Without SFTP, stream the upload over SSH to `chunky` on the remote machine:
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/matthewmueller/chunky.svg)](https://pkg.go.dev/github.com/matthewmueller/chunky)
+```sh
+chunky upload . - | ssh vagrant@127.0.0.1 -p 2222 chunky upload - my-repo
+```
 
-Chunky also includes a programmatic API. For now, that's undocumented, but it should be fairly straightforward to understand by looking in the `./cli` directory.
+List the versions, tag one and download it:
 
-You can also review the documentation on [go.dev](https://pkg.go.dev/github.com/matthewmueller/chunky).
+```sh
+$ chunky list vagrant@127.0.0.1:2222/my-repo
+3LJWjx7QYf2ZE6we2JDLvtqilJy [latest] 69kB matt 3 minutes ago
+3LJWixXt1Zjt16Y3yVkgvXMqBLI          68kB matt 1 hour ago
 
-### Serving a repository over HTTP
+$ chunky tag --revision 3LJWixXt1Zjt16Y3yVkgvXMqBLI vagrant@127.0.0.1:2222/my-repo v0.0.1
+$ chunky download --revision v0.0.1 vagrant@127.0.0.1:2222/my-repo my-repo-v1
+```
 
-The `repos/http` package lets you upload and download over HTTP(S) instead of SFTP. It has two halves: `Handler` serves an existing repository from the remote machine and `New` connects to it.
+## CLI Reference
 
-On the server, wrap the directory holding the repository and mount it in any HTTP server:
+```
+Usage:
+  $ chunky [flags] [command]
+
+Commands:
+  cat       show a file
+  create    create a new repository
+  download  download a directory from a repository
+  list      list uploads to a repository
+  show      show a revision
+  tag       tag a commit
+  tags      list tags
+  upload    upload a directory to a repository
+
+Advanced Commands:
+  cache-prune  prune a repository and local cache
+  cache-size   print the size of the cache
+  cat-commit   show a commit
+  cat-pack     show a pack
+  cat-tag      show a tag
+```
+
+Uploads remember what each repository has in a local cache. If a streamed upload is refused as stale, usually because the repository is new or was reset, run `chunky cache-prune -` and try again.
+
+## API Reference
+
+Upload and download with any repository:
 
 ```go
-import (
-	"net/http"
-
-	http_repo "github.com/matthewmueller/chunky/repos/http"
-	"github.com/matthewmueller/chunky/repos/local"
-	"github.com/matthewmueller/virt"
-)
-
+chky := chunky.New(logs.Default())
 repo := local.New(virt.OS("/var/lib/my-repo"))
-http.Handle("/repo/", http.StripPrefix("/repo", http_repo.Handler(repo)))
-http.ListenAndServe(":8080", nil)
-```
 
-On the client, point the HTTP repository at that URL and use it like any other repository:
-
-```go
-repo := http_repo.New("https://example.com/repo")
-revision, err := chunky.New(logs.Default()).Upload(ctx, &chunky.Upload{
+revision, err := chky.Upload(ctx, &chunky.Upload{
 	From:  virt.OS("."),
 	To:    repo,
 	Cache: virt.OS(cacheDir),
 })
+
+err = chky.Download(ctx, &chunky.Download{
+	From:     repo,
+	To:       virt.OS("my-repo-v1"),
+	Revision: revision,
+})
 ```
 
-`Handler` rejects paths that escape the repository and strips special mode bits (e.g. setuid) from uploads, but it does not authenticate requests. Add your own authentication and TLS in front of it.
+### Repositories
 
-The HTTP repository is only available through the Go API for now. The CLI supports local and SFTP repositories.
+- `repos/local`: a directory on this machine
+- `repos/sftp`: a directory on a remote machine over SFTP
+- `repos/http`: a repository served by `http.Handler`
+- `repos/stream`: a write-only stream, like SSH stdin or a request body
+
+Serve a repository over HTTP. `Handler` doesn't authenticate requests, so put your own auth and TLS in front of it:
+
+```go
+repo := local.New(virt.OS("/var/lib/my-repo"))
+http.Handle("/repo/", http.StripPrefix("/repo", http_repo.Handler(repo)))
+
+// On the client
+repo := http_repo.New("https://example.com/repo")
+```
+
+New backends implement `repos.Repo`, or only `repos.Writer` if they can't be read:
+
+```go
+type Writer interface {
+	Upload(ctx context.Context, file *File) error
+	Close() error
+}
+
+type Repo interface {
+	Writer
+	Download(ctx context.Context, path string) (*File, error)
+	ReadDir(dir string) ([]fs.DirEntry, error)
+}
+```
 
 ### Uploading over a one-way stream
 
-The `repos/stream` package carries an upload over any one-way pipe, like SSH stdin or an HTTP request body, and `Receive` writes it into a repository on the other end.
-
-The client can't read the repository through a pipe, so by default it only skips files in its cache. To send only what the repository is missing without a cache, the client asks the host first. That makes two one-way requests, so it works through an HTTP proxy too:
-
-1. The client sends its manifest, a map of each file's path to its hash. The host answers with the files it doesn't have, from any commit.
-2. The client streams only those files, and references the rest. The host receives the stream.
-
-Skip step 1 to use a local `Cache` instead, like the CLI does.
-
-How the manifest gets to the host and back is up to you. `Manifest` is a plain map, so encode it with whatever your transport uses, like JSON.
+A stream can't be read, so to skip files the repository already has without a cache, the client asks the host first. That's two one-way requests, so it works through an HTTP proxy.
 
 On the client:
 
 ```go
-import "github.com/matthewmueller/chunky/repos/stream"
-
-chky := chunky.New(logs.Default())
 upload := &chunky.Upload{From: virt.OS(".")}
 
 // 1. Ask the host which files it's missing
 manifest, err := chky.Manifest(ctx, upload)
 missing, err := askHost(manifest) // your transport, e.g. a JSON request
 
-// 2. Stream only the missing files to the host
+// 2. Stream only those files
 upload.Missing = missing
-upload.To = stream.New(w) // an io.WriteCloser, like an ssh stdin or a request body
+upload.To = stream.New(w)
 revision, err := chky.Upload(ctx, upload)
 err = upload.To.Close()
 ```
@@ -202,77 +139,19 @@ err = upload.To.Close()
 On the host:
 
 ```go
-chky := chunky.New(logs.Default())
-repo := local.New(virt.OS("/var/lib/my-repo"))
-
 // 1. Answer with the files the repository is missing
-missing, err := chky.Missing(ctx, repo, manifest) // manifest from the client's request
+missing, err := chky.Missing(ctx, repo, manifest)
 
-// 2. Receive the stream into the repository
-revision, err := chky.Receive(ctx, r, repo) // r is the client's stream
-if errors.Is(err, chunky.ErrStale) {
-	// The upload references a pack or file the repository doesn't have,
-	// usually because the client's cache is from another repository. The
-	// client should clear its cache and retry once.
-}
+// 2. Receive the stream
+revision, err := chky.Receive(ctx, r, repo)
 ```
 
-`Receive` fills in the packs of referenced files when the commit arrives, and only writes the commit and its tags once the stream ends with the latest tag, so a cut or refused stream leaves at most unreferenced packs.
-
-## Similar Tools
-
-- **Git:** You need to use a Git extension to store large binaries and overall requires too much ceremony when you just want to sync a directory on a remote machine. You may also want to sync files in your `.gitignore` to production servers (e.g. compiled assets).
-- **Restic:** An excellent file backup tool. Chunky took a lot of design inspiration from Restic. Restic doesn't have a programmatic API and the backups are encrypted, which is not helpful in a server-side setting.
-- **Rsync:** Great for syncing files to a remote machine, but does not store older versions of those files.
-
-## Adding New Repositories
-
-Chunky currently supports three repository backends:
-
-1. `Local`: Store your repository in your local filesystem
-2. `SFTP`: Store your repository on a remote server
-3. `HTTP`: Store your repository on a remote server that serves it with `http.Handler`
-
-I'd encourage you to contribute new repository backends to Chunky. A backend you can only write to, like `repos/stream`, implements `Writer`. One you can also read from implements `Repo`:
-
-```go
-type Writer interface {
-	// Upload from a filesystem to the repository
-	Upload(ctx context.Context, file *File) error
-	// Close the repository
-	Close() error
-}
-
-type Repo interface {
-	Writer
-	// Download paths from the repository to a filesystem
-	Download(ctx context.Context, path string) (*File, error)
-	// ReadDir reads a directory from the repository
-	ReadDir(dir string) ([]fs.DirEntry, error)
-}
-```
+`Manifest` is a plain map of path to hash, so encode it however your transport does. Skip step 1 to use a local `Cache` instead, like the CLI. `Receive` only writes the commit once the whole stream arrives, and refuses with `ErrStale` if the upload references files the repository doesn't have.
 
 ## Development
 
-First, clone the repo:
-
-```bash
+```sh
 git clone https://github.com/matthewmueller/chunky
 cd chunky
+make test
 ```
-
-Next, install dependencies:
-
-```bash
-go mod tidy
-```
-
-Finally, try running the tests:
-
-```bash
-go test ./...
-```
-
-## License
-
-MIT
