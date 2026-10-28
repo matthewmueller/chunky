@@ -337,6 +337,11 @@ func TestMissing(t *testing.T) {
 	is.True(revision != "")
 	is.Equal(readLatest(t, host), map[string]string{"a.txt": "a", "b.txt": "b"})
 	is.Equal(countPacks(t, hostDir), 2)
+
+	// Missing replaces the cache
+	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m, Cache: virt.Tree{}})
+	is.True(err != nil)
+	is.Equal(revision, "")
 }
 
 func TestReceiveMissingFile(t *testing.T) {

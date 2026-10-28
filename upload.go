@@ -32,8 +32,8 @@ type Upload struct {
 	Cache repos.FS
 
 	// Missing lists the files To is missing, from Client.Missing. When set,
-	// only those are sent and the rest are referenced for Receive to resolve,
-	// so Cache isn't read or written.
+	// only those are sent and the rest are referenced for Receive to resolve.
+	// It replaces Cache, so they can't be used together.
 	Missing Manifest
 
 	User   string
@@ -66,6 +66,9 @@ func (in *Upload) validate() (err error) {
 	// Required fields
 	if in.From == nil {
 		err = errors.Join(err, errors.New("missing from filesystem"))
+	}
+	if in.Cache != nil && in.Missing != nil {
+		err = errors.Join(err, errors.New("cache and missing can't be used together"))
 	}
 	if in.Cache == nil {
 		in.Cache = virt.Tree{}
@@ -183,14 +186,13 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 
 	log := logs.Scope(c.log)
 
-	// Without Missing, the cache decides which files To already has
 	cache, err := caches.Load(c.log, in.Cache)
 	if err != nil {
 		return "", fmt.Errorf("unable to load the cache: %w", err)
 	}
 
 	// Sync the cache with To when we can read it
-	if repo, ok := in.To.(repos.Repo); ok && in.Missing == nil {
+	if repo, ok := in.To.(repos.Repo); ok {
 		now := time.Now()
 		if err := cache.Download(ctx, repo); err != nil {
 			return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
@@ -210,6 +212,16 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 
 	// Chunk the files into packs, and add each file to the commit
 	if err := in.walk(func(fpath, fileHash string) error {
+		// Check if the file is already in the pack. This will duplicate content
+		// if the file path in the pack is different from the file path in the
+		// commit. To fix this, we also ensure the file paths are the same.
+		// TODO: We should add a way to alias files in the pack to other packs.
+		if cacheFile, ok := cache.Get(fpath, fileHash); ok {
+			log.Debug("file already in cache", slog.String("path", fpath))
+			commit.Add(cacheFile)
+			return nil
+		}
+
 		// Get the file lstat
 		lstat, err := in.From.Lstat(fpath)
 		if err != nil {
@@ -224,18 +236,6 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 				Size: uint64(lstat.Size()),
 			})
 			return nil
-		}
-
-		// Check if the file is already in the pack. This will duplicate content
-		// if the file path in the pack is different from the file path in the
-		// commit. To fix this, we also ensure the file paths are the same.
-		// TODO: We should add a way to alias files in the pack to other packs.
-		if in.Missing == nil {
-			if cacheFile, ok := cache.Get(fpath, fileHash); ok {
-				log.Debug("file already in cache", slog.String("path", fpath))
-				commit.Add(cacheFile)
-				return nil
-			}
 		}
 
 		// Create a reader for the file data, handling symlinks
@@ -309,11 +309,9 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	}
 
 	// Cache the commit, so the next upload can skip its files without reading
-	// To. With Missing, the commit's references have no packs to cache.
-	if in.Missing == nil {
-		if err := cache.Add(commit); err != nil {
-			return "", fmt.Errorf("unable to cache commit %q: %w", commitId, err)
-		}
+	// To
+	if err := cache.Add(commit); err != nil {
+		return "", fmt.Errorf("unable to cache commit %q: %w", commitId, err)
 	}
 
 	return commitId, nil
