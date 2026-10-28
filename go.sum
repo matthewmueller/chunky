@@ -1,3 +1,5 @@
+github.com/caarlos0/duration v0.0.0-20241219124531-2bb7dc683aa4 h1:7lx4z3y4Fdr9nDtIevBFdStIrvYA8A1bVwJMZo1qLWs=
+github.com/caarlos0/duration v0.0.0-20241219124531-2bb7dc683aa4/go.mod h1:mSkwb/eZEwOJJJ4tqAKiuhLIPe0e9+FKhlU0oMCpbf8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
@@ -12,6 +14,8 @@ github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 github.com/hexops/valast v1.4.1 h1:vlB+usah+MLacCyDDqACn2yhAoCDlpHYkpEKtej+RXE=
 github.com/hexops/valast v1.4.1/go.mod h1:G+D6TExWuKs5he+hYlPMfYyhQ8w8qbc2vm4gDWwLdDg=
+github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 h1:Z9n2FFNUXsshfwJMBgNA0RU6/i7WVaAegv3PtuIHPMs=
+github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51/go.mod h1:CzGEWj7cYgsdH8dAjBGEr58BoE7ScuLd+fwFZ44+/x8=
 github.com/klauspost/compress v1.17.11 h1:In6xLpyWOi1+C7tXUUWv2ot1QvBjxevKAaI6IXrJmUc=
 github.com/klauspost/compress v1.17.11/go.mod h1:pMDklpSncoRMuLFrf1W9Ss9KT+0rH90U12bZKk7uwG0=
 github.com/kr/fs v0.1.0 h1:Jskdu9ieNAYnjxsi0LbQp1ulIKZV1LAFgK1tWhpZgl8=
@@ -24,6 +28,8 @@ github.com/lithammer/dedent v1.1.0 h1:VNzHMVCBNG1j0fh3OrsFRkVUwStdDArbgBWoPAffkt
 github.com/lithammer/dedent v1.1.0/go.mod h1:jrXYCQtgg0nJiN+StA2KgR7w6CiQNv9Fd/Z9BP0jIOc=
 github.com/livebud/cli v0.0.12 h1:9pSF2lUsgt4CmalL7RWxiA1v4JTc1uvRPP+FhrcXdPU=
 github.com/livebud/cli v0.0.12/go.mod h1:8CoX+Yz5eS1yWtpTKro5RZyOSKh0sqiREc/Ng8dVmD0=
+github.com/livebud/cli v0.0.29 h1:ozlJZLyQkfIDgZftczIgYnPwRMws4NOTqz8ZjDY18EM=
+github.com/livebud/cli v0.0.29/go.mod h1:OG9XuOqbWsyTXy+9bYp9q8YF8b120QJgNpObhT4z+C4=
 github.com/livebud/color v0.0.2 h1:cxfLYpXPk445A6jc+8KNklBUWM6Ra8G09j3mbWAYtEc=
 github.com/livebud/color v0.0.2/go.mod h1:IBCW2CsRUnRuN9L42Vy9SkksJdhcnISoS+hOxa20VkU=
 github.com/matryer/is v1.4.1 h1:55ehd8zaGABKLXQUe2awZ99BD/PTc2ls+KV/dXphgEQ=

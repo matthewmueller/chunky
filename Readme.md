@@ -24,6 +24,16 @@ This example uploads the entire current directory to the `vagrant@127.0.0.1:2222
 
 This will create a directory `my-repo` in the `$HOME/vagrant` directory on your remote machine.
 
+### Upload over SSH without SFTP
+
+```bash
+$ chunky upload . - --base vagrant@127.0.0.1:2222/my-repo | ssh vagrant@127.0.0.1 -p 2222 chunky upload - my-repo
+```
+
+Use `-` as the repository to stream the upload to stdout, and `-` as the directory to receive one from stdin. The remote machine needs `chunky` installed.
+
+`--base` reads the repository's latest commit over SFTP, so only files that changed since then are sent. Without it, the upload only skips files in the local cache for `-`. If you upload to a different machine, the receiver refuses the upload as stale. Run `chunky cache-prune -` and try again.
+
 ### List all versions
 
 ```bash
@@ -157,6 +167,46 @@ revision, err := chunky.New(logs.Default()).Upload(ctx, &chunky.Upload{
 
 The HTTP repository is only available through the Go API for now. The CLI supports local and SFTP repositories.
 
+### Uploading over a one-way stream
+
+The `repos/stream` package carries an upload over any one-way pipe, like SSH stdin or an HTTP request body, and `Receive` writes it into a repository on the other end.
+
+The client can't read the repository through a pipe, so it only skips files it already has in its cache. If the client can also read the repository, like over SFTP or HTTP, it can find the latest commit and upload on top of it as `Base`:
+
+```go
+import "github.com/matthewmueller/chunky/repos/stream"
+
+chky := chunky.New(logs.Default())
+
+// Optional: base is nil when the repository is empty
+base, err := chky.FindCommit(ctx, hostRepo, "latest")
+if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	return err
+}
+
+to := stream.New(stdin) // an io.WriteCloser
+revision, err := chky.Upload(ctx, &chunky.Upload{
+	From:  virt.OS("."),
+	To:    to,
+	Cache: virt.OS(cacheDir),
+	Base:  base,
+})
+err = to.Close()
+```
+
+On the host, receive the stream into a repository:
+
+```go
+repo := local.New(virt.OS("/var/lib/my-repo"))
+revision, err := chky.Receive(ctx, os.Stdin, repo)
+if errors.Is(err, chunky.ErrStale) {
+	// The upload references a pack the repository doesn't have. The client
+	// should clear its cache and retry once.
+}
+```
+
+`Receive` only writes the commit and its tags once the stream ends with the latest tag, so a cut or refused stream leaves at most unreferenced packs.
+
 ## Similar Tools
 
 - **Git:** You need to use a Git extension to store large binaries and overall requires too much ceremony when you just want to sync a directory on a remote machine. You may also want to sync files in your `.gitignore` to production servers (e.g. compiled assets).
@@ -171,18 +221,22 @@ Chunky currently supports three repository backends:
 2. `SFTP`: Store your repository on a remote server
 3. `HTTP`: Store your repository on a remote server that serves it with `http.Handler`
 
-I'd encourage you to contribute new repository backends to Chunky. The interface is quite straightforward to implement:
+I'd encourage you to contribute new repository backends to Chunky. A backend you can only write to, like `repos/stream`, implements `Writer`. One you can also read from implements `Repo`:
 
 ```go
-type Repo interface {
+type Writer interface {
 	// Upload from a filesystem to the repository
 	Upload(ctx context.Context, file *File) error
+	// Close the repository
+	Close() error
+}
+
+type Repo interface {
+	Writer
 	// Download paths from the repository to a filesystem
 	Download(ctx context.Context, path string) (*File, error)
 	// ReadDir reads a directory from the repository
 	ReadDir(dir string) ([]fs.DirEntry, error)
-	// Close the repository
-	Close() error
 }
 ```
 

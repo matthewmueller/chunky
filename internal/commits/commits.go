@@ -211,7 +211,7 @@ func resolveRevision(ctx context.Context, repo repos.Repo, revision string) (sha
 	tag, err := repos.Download(ctx, repo, path.Join("tags", revision))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return "", fmt.Errorf("commits: revision not found: %s", revision)
+			return "", fmt.Errorf("commits: revision not found: %s: %w", revision, err)
 		}
 		return "", fmt.Errorf("commits: unable to download tag: %w", err)
 	}

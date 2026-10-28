@@ -25,9 +25,14 @@ import (
 )
 
 type Upload struct {
-	From   repos.ReadFS
-	To     repos.Repo
-	Cache  repos.FS
+	From  repos.ReadFS
+	To    repos.Writer
+	Cache repos.FS
+
+	// Base is a commit To already has, for when To can't be read. It's added
+	// to Cache, so only files missing from it are sent.
+	Base *Commit
+
 	User   string
 	Tags   []string
 	Paths  []string
@@ -175,13 +180,25 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 
 	log := logs.Scope(c.log)
 
-	// Download the latest commits from the cache
-	now := time.Now()
-	cache, err := caches.Download(ctx, c.log, in.To, in.Cache)
+	// Load the cache, starting from the base if there is one
+	cache, err := caches.Load(c.log, in.Cache)
 	if err != nil {
-		return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
+		return "", fmt.Errorf("unable to load the cache: %w", err)
 	}
-	log.Debug("downloaded latest commits from the cache", slog.Duration("in", time.Since(now)))
+	if in.Base != nil {
+		if err := cache.Add(in.Base); err != nil {
+			return "", fmt.Errorf("unable to cache base %q: %w", in.Base.ID(), err)
+		}
+	}
+
+	// Sync the cache with To when we can read it
+	if repo, ok := in.To.(repos.Repo); ok {
+		now := time.Now()
+		if err := cache.Download(ctx, repo); err != nil {
+			return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
+		}
+		log.Debug("downloaded latest commits from the cache", slog.Duration("in", time.Since(now)))
+	}
 
 	ignore := in.Ignore
 	createdAt := time.Now().UTC()
@@ -304,6 +321,11 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	}
 	if err := upload.Direct(ctx, tagFiles...); err != nil {
 		return "", fmt.Errorf("unable to upload tags for commit %q: %w", commitId, err)
+	}
+
+	// Cache the commit, so the next upload can skip its files without reading To
+	if err := cache.Add(commit); err != nil {
+		return "", fmt.Errorf("unable to cache commit %q: %w", commitId, err)
 	}
 
 	return commitId, nil

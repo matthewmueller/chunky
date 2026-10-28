@@ -41,6 +41,8 @@ func Run() int {
 func Default() *CLI {
 	return &CLI{
 		os.Stdout,
+		os.Stderr,
+		os.Stdin,
 		".",
 		prompter.Default(),
 		color.Default(),
@@ -52,6 +54,8 @@ func Default() *CLI {
 
 type CLI struct {
 	Stdout io.Writer
+	Stderr io.Writer
+	Stdin  io.Reader
 	Dir    string
 	Prompt *prompter.Prompt
 	Color  color.Writer
@@ -205,7 +209,7 @@ func (c *CLI) logger(logLevel string) (*slog.Logger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cli: parsing log level: %w", err)
 	}
-	log := logs.New(logs.Filter(level, logs.Console(c.Stdout)))
+	log := logs.New(logs.Filter(level, logs.Console(c.Stderr)))
 	return log, nil
 }
 

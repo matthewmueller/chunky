@@ -13,20 +13,6 @@ import (
 	"github.com/matthewmueller/chunky/repos"
 )
 
-// Download the cache to the local filesystem
-func Download(ctx context.Context, log *slog.Logger, from repos.Repo, to repos.FS) (*Local, error) {
-	// Load currently cached files
-	cache, err := Load(log, to)
-	if err != nil {
-		return nil, err
-	}
-	// Download any new commits
-	if err := cache.Download(ctx, from); err != nil {
-		return nil, err
-	}
-	return cache, nil
-}
-
 // Load from existing cache
 func Load(log *slog.Logger, fsys repos.FS) (*Local, error) {
 	cache := &Local{
@@ -112,7 +98,7 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 
 		// Skip if we already have the commit
 		if _, ok := c.localCommits[commitId]; ok {
-			return nil
+			continue
 		}
 
 		// Download the commit
@@ -166,6 +152,22 @@ func (c *Local) Download(ctx context.Context, repo repos.Repo) error {
 		delete(c.localCommits, commitId)
 	}
 
+	return nil
+}
+
+// Add a commit to the cache
+func (c *Local) Add(commit *commits.Commit) error {
+	data, err := commit.Pack()
+	if err != nil {
+		return fmt.Errorf("caches: unable to pack commit %s: %w", commit.ID(), err)
+	}
+	if err := c.fsys.WriteFile(commit.ID(), data, 0644); err != nil {
+		return fmt.Errorf("caches: unable to write commit %s: %w", commit.ID(), err)
+	}
+	for _, file := range commit.Files() {
+		c.files[cacheKey(file.Path, file.Id)] = file
+	}
+	c.localCommits[commit.ID()] = commit
 	return nil
 }
 
