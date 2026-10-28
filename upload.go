@@ -31,10 +31,10 @@ type Upload struct {
 	// none)
 	Cache repos.FS
 
-	// Missing lists the files To is missing, from Client.Missing. Only those
-	// are sent, and the rest are referenced for Receive to resolve. Cache is
-	// unused.
-	Missing *Manifest
+	// Missing lists the files To is missing, from Client.Missing. When set,
+	// only those are sent and the rest are referenced for Receive to resolve,
+	// so Cache isn't read or written.
+	Missing Manifest
 
 	User   string
 	Tags   []string
@@ -217,7 +217,7 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 		}
 
 		// Reference the files To has. Receive resolves their packs.
-		if in.Missing != nil && !in.Missing.Has(fpath, fileHash) {
+		if in.Missing != nil && in.Missing[fpath] != fileHash {
 			commit.Add(&commits.File{
 				Path: fpath,
 				Id:   fileHash,

@@ -171,7 +171,7 @@ The HTTP repository is only available through the Go API for now. The CLI suppor
 
 The `repos/stream` package carries an upload over any one-way pipe, like SSH stdin or an HTTP request body, and `Receive` writes it into a repository on the other end.
 
-The client can't read the repository through a pipe, so it can only skip files in its cache. To send only what the repository is missing without a cache, ask first. Send the client's manifest, a `<hash> <path>` line per file, and the host answers with the lines it's missing. That makes two one-way requests, so it works through an HTTP proxy too:
+The client can't read the repository through a pipe, so it can only skip files in its cache. To send only what the repository is missing without a cache, ask first. Send the client's manifest, a map of each file's path to its hash, and the host answers with the files it's missing. That makes two one-way requests, so it works through an HTTP proxy too:
 
 ```go
 import "github.com/matthewmueller/chunky/repos/stream"
@@ -181,15 +181,16 @@ upload := &chunky.Upload{From: virt.OS(".")}
 
 // Client: list the files and hashes, and send them to the host
 manifest, err := chky.Manifest(ctx, upload)
-manifest.WriteTo(request)
+err = json.NewEncoder(request).Encode(manifest)
 
 // Host: answer with the files it doesn't have, from any commit
-manifest, err := chunky.ReadManifest(request)
+var manifest chunky.Manifest
+err := json.NewDecoder(request).Decode(&manifest)
 missing, err := chky.Missing(ctx, repo, manifest)
-missing.WriteTo(response)
+err = json.NewEncoder(response).Encode(missing)
 
 // Client: send only the missing files, and reference the rest
-upload.Missing, err = chunky.ReadManifest(response)
+err = json.NewDecoder(response).Decode(&upload.Missing)
 upload.To = stream.New(stdin) // an io.WriteCloser
 revision, err := chky.Upload(ctx, upload)
 err = upload.To.Close()

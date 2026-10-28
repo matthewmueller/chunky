@@ -4,11 +4,14 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -282,8 +285,8 @@ func TestReceive(t *testing.T) {
 }
 
 // missing round-trips the client's manifest and the host's answer through
-// their text form, like a client asking a host over a pipe
-func missing(t testing.TB, host repos.Repo, from virt.Tree) (*chunky.Manifest, string) {
+// JSON, like a client asking a host over a pipe
+func missing(t testing.TB, host repos.Repo, from virt.Tree) chunky.Manifest {
 	t.Helper()
 	is := is.New(t)
 	ctx := context.Background()
@@ -291,28 +294,15 @@ func missing(t testing.TB, host repos.Repo, from virt.Tree) (*chunky.Manifest, s
 	manifest, err := chky.Manifest(ctx, &chunky.Upload{From: from})
 	is.NoErr(err)
 	buf := new(bytes.Buffer)
-	_, err = manifest.WriteTo(buf)
+	is.NoErr(json.NewEncoder(buf).Encode(manifest))
+	var received chunky.Manifest
+	is.NoErr(json.NewDecoder(buf).Decode(&received))
+	missing, err := chky.Missing(ctx, host, received)
 	is.NoErr(err)
-	manifest, err = chunky.ReadManifest(buf)
-	is.NoErr(err)
-	missing, err := chky.Missing(ctx, host, manifest)
-	is.NoErr(err)
-	buf.Reset()
-	_, err = missing.WriteTo(buf)
-	is.NoErr(err)
-	text := buf.String()
-	missing, err = chunky.ReadManifest(buf)
-	is.NoErr(err)
-	return missing, text
-}
-
-// paths lists the paths in a manifest's text
-func paths(text string) (paths []string) {
-	for line := range strings.Lines(text) {
-		_, fpath, _ := strings.Cut(strings.TrimSpace(line), " ")
-		paths = append(paths, fpath)
-	}
-	return paths
+	is.NoErr(json.NewEncoder(buf).Encode(missing))
+	var answer chunky.Manifest
+	is.NoErr(json.NewDecoder(buf).Decode(&answer))
+	return answer
 }
 
 func TestMissing(t *testing.T) {
@@ -321,8 +311,8 @@ func TestMissing(t *testing.T) {
 	host := local.New(virt.OS(hostDir))
 
 	// An empty host is missing everything
-	m, text := missing(t, host, tree("a", "b"))
-	is.Equal(paths(text), []string{"a.txt", "b.txt"})
+	m := missing(t, host, tree("a", "b"))
+	is.Equal(slices.Sorted(maps.Keys(m)), []string{"a.txt", "b.txt"})
 	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m})
 	is.NoErr(err)
 	is.True(revision != "")
@@ -330,8 +320,8 @@ func TestMissing(t *testing.T) {
 	is.Equal(countPacks(t, hostDir), 1)
 
 	// A client without a cache only sends the changed file
-	m, text = missing(t, host, tree("a", "b2"))
-	is.Equal(paths(text), []string{"b.txt"})
+	m = missing(t, host, tree("a", "b2"))
+	is.Equal(slices.Sorted(maps.Keys(m)), []string{"b.txt"})
 	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Missing: m})
 	is.NoErr(err)
 	is.True(revision != "")
@@ -339,8 +329,9 @@ func TestMissing(t *testing.T) {
 	is.Equal(countPacks(t, hostDir), 2)
 
 	// Files from older commits count too, so going back sends nothing
-	m, text = missing(t, host, tree("a", "b"))
-	is.Equal(text, "")
+	m = missing(t, host, tree("a", "b"))
+	is.True(m != nil)
+	is.Equal(len(m), 0)
 	revision, err = deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m})
 	is.NoErr(err)
 	is.True(revision != "")
@@ -354,24 +345,12 @@ func TestReceiveMissingFile(t *testing.T) {
 	host := local.New(virt.OS(hostDir))
 
 	// The client was told the host has everything, but it has nothing
-	m, err := chunky.ReadManifest(strings.NewReader(""))
-	is.NoErr(err)
-	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: m})
+	revision, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Missing: chunky.Manifest{}})
 	is.True(errors.Is(err, chunky.ErrStale))
 	is.Equal(revision, "")
 	info, err := os.Stat(filepath.Join(hostDir, "commits"))
 	is.True(errors.Is(err, fs.ErrNotExist))
 	is.Equal(info, nil)
-}
-
-func TestReadManifestInvalid(t *testing.T) {
-	is := is.New(t)
-	m, err := chunky.ReadManifest(strings.NewReader("abc\n"))
-	is.True(err != nil)
-	is.Equal(m, nil)
-	m, err = chunky.ReadManifest(strings.NewReader("abc ../x\n"))
-	is.True(err != nil)
-	is.Equal(m, nil)
 }
 
 func TestReceiveStale(t *testing.T) {
