@@ -24,6 +24,14 @@ This example uploads the entire current directory to the `vagrant@127.0.0.1:2222
 
 This will create a directory `my-repo` in the `$HOME/vagrant` directory on your remote machine.
 
+### Upload over SSH without SFTP
+
+```bash
+$ chunky upload . - | ssh vagrant@127.0.0.1 -p 2222 chunky upload - my-repo
+```
+
+Use `-` as the repository to stream the upload to stdout, and `-` as the directory to receive one from stdin. The remote machine needs `chunky` installed. The upload only skips files in the local cache for `-`, so if you upload to a different machine, the receiver refuses it as stale. Run `chunky cache-prune -` and try again.
+
 ### List all versions
 
 ```bash

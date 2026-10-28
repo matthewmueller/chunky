@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/klauspost/compress v1.17.11
-	github.com/livebud/cli v0.0.12
+	github.com/livebud/cli v0.0.29
 	github.com/livebud/color v0.0.2
 	github.com/matryer/is v1.4.1
 	github.com/matthewmueller/logs v0.0.6
@@ -22,9 +22,11 @@ require (
 )
 
 require (
+	github.com/caarlos0/duration v0.0.0-20241219124531-2bb7dc683aa4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/gedex/inflector v0.0.0-20170307190818-16278e9db813 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
+	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/sergi/go-diff v1.3.1 // indirect
