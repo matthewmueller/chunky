@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"slices"
 
 	"github.com/livebud/cli"
@@ -21,6 +22,7 @@ type Upload struct {
 	Cache       bool
 	LimitUpload string
 	Concurrency *int
+	Base        string
 }
 
 func (u *Upload) command(cli cli.Command) cli.Command {
@@ -31,6 +33,7 @@ func (u *Upload) command(cli cli.Command) cli.Command {
 	cmd.Flag("paths", "subpaths to upload").Strings(&u.Paths).Default(".")
 	cmd.Flag("limit-upload", "limit bytes per second").String(&u.LimitUpload).Default("")
 	cmd.Flag("concurrency", "number of concurrent uploads").Optional().Int(&u.Concurrency)
+	cmd.Flag("base", "repository to read the latest commit from, when the upload can't read it").String(&u.Base).Default("")
 	return cmd
 }
 
@@ -68,6 +71,20 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
+	// Upload on top of the latest commit, read from a repository we can read
+	var base *chunky.Commit
+	if in.Base != "" {
+		baseRepo, err := c.loadRepo(in.Base)
+		if err != nil {
+			return err
+		}
+		defer baseRepo.Close()
+		base, err = c.chunky.FindCommit(ctx, baseRepo, "latest")
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+
 	revision, err := c.chunky.Upload(ctx, &chunky.Upload{
 		From:        fsys,
 		To:          to,
@@ -75,6 +92,7 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		Paths:       in.Paths,
 		User:        user,
 		Cache:       cache,
+		Base:        base,
 		LimitUpload: in.LimitUpload,
 		Concurrency: in.Concurrency,
 	})
@@ -98,8 +116,8 @@ func (c *CLI) receive(ctx context.Context, in *Upload) error {
 		return errors.New("cli: upload can't stream from stdin to stdout")
 	}
 	// The stream already carries its tags and was packed by the sender
-	if len(in.Tags) > 0 || !slices.Equal(in.Paths, []string{"."}) || in.LimitUpload != "" || in.Concurrency != nil {
-		return errors.New("cli: --tags, --paths, --limit-upload and --concurrency don't apply when uploading from stdin")
+	if len(in.Tags) > 0 || !slices.Equal(in.Paths, []string{"."}) || in.LimitUpload != "" || in.Concurrency != nil || in.Base != "" {
+		return errors.New("cli: --tags, --paths, --limit-upload, --concurrency and --base don't apply when uploading from stdin")
 	}
 
 	repo, err := c.loadRepo(in.To)

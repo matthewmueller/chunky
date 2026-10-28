@@ -192,10 +192,7 @@ func TestPaths(t *testing.T) {
 func TestFindCommitMissing(t *testing.T) {
 	is := is.New(t)
 	chky := chunky.New(logs.Default())
-	_, err := chky.FindCommit(context.Background(), &chunky.FindCommit{
-		Repo:     local.New(virt.OS(t.TempDir())),
-		Revision: "latest",
-	})
+	_, err := chky.FindCommit(context.Background(), local.New(virt.OS(t.TempDir())), "latest")
 	is.True(errors.Is(err, fs.ErrNotExist))
 }
 
@@ -289,12 +286,9 @@ func TestReceiveBase(t *testing.T) {
 	_, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Cache: virt.OS(t.TempDir())})
 	is.NoErr(err)
 
-	// A fresh cache reads the base as bytes, then only sends the changed file
-	latest, err := chunky.New(logs.Discard()).FindCommit(ctx, &chunky.FindCommit{Repo: host, Revision: "latest"})
-	is.NoErr(err)
-	data, err := latest.Pack()
-	is.NoErr(err)
-	base, err := chunky.UnpackCommit(data)
+	// A fresh cache reads the base from the host, then only sends the changed
+	// file
+	base, err := chunky.New(logs.Discard()).FindCommit(ctx, host, "latest")
 	is.NoErr(err)
 	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir()), Base: base})
 	is.NoErr(err)
@@ -319,7 +313,7 @@ func TestReceiveStale(t *testing.T) {
 	is.True(errors.Is(err, fs.ErrNotExist))
 
 	// Retry with a fresh cache, after the base read finds nothing
-	_, err = chunky.New(logs.Discard()).FindCommit(ctx, &chunky.FindCommit{Repo: host, Revision: "latest"})
+	_, err = chunky.New(logs.Discard()).FindCommit(ctx, host, "latest")
 	is.True(errors.Is(err, fs.ErrNotExist))
 	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Cache: virt.OS(t.TempDir())})
 	is.NoErr(err)

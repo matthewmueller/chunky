@@ -27,10 +27,12 @@ This will create a directory `my-repo` in the `$HOME/vagrant` directory on your 
 ### Upload over SSH without SFTP
 
 ```bash
-$ chunky upload . - | ssh vagrant@127.0.0.1 -p 2222 chunky upload - my-repo
+$ chunky upload . - --base vagrant@127.0.0.1:2222/my-repo | ssh vagrant@127.0.0.1 -p 2222 chunky upload - my-repo
 ```
 
-Use `-` as the repository to stream the upload to stdout, and `-` as the directory to receive one from stdin. The remote machine needs `chunky` installed. The upload only skips files in the local cache for `-`, so if you upload to a different machine, the receiver refuses it as stale. Run `chunky cache-prune -` and try again.
+Use `-` as the repository to stream the upload to stdout, and `-` as the directory to receive one from stdin. The remote machine needs `chunky` installed.
+
+`--base` reads the repository's latest commit over SFTP, so only files that changed since then are sent. Without it, the upload only skips files in the local cache for `-`. If you upload to a different machine, the receiver refuses the upload as stale. Run `chunky cache-prune -` and try again.
 
 ### List all versions
 
@@ -169,16 +171,21 @@ The HTTP repository is only available through the Go API for now. The CLI suppor
 
 The `repos/stream` package carries an upload over any one-way pipe, like SSH stdin or an HTTP request body, and `Receive` writes it into a repository on the other end.
 
-The client can't read the repository through a pipe, so it only skips files it already has in its cache. A fresh client can read the repository's latest commit separately and pass it as `Base`:
+The client can't read the repository through a pipe, so it only skips files it already has in its cache. If the client can also read the repository, like over SFTP or HTTP, it can find the latest commit and upload on top of it as `Base`:
 
 ```go
 import "github.com/matthewmueller/chunky/repos/stream"
 
-// Optional: data is latest.Pack() from the host, read separately
-base, err := chunky.UnpackCommit(data)
+chky := chunky.New(logs.Default())
+
+// Optional: base is nil when the repository is empty
+base, err := chky.FindCommit(ctx, hostRepo, "latest")
+if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	return err
+}
 
 to := stream.New(stdin) // an io.WriteCloser
-revision, err := chunky.New(logs.Default()).Upload(ctx, &chunky.Upload{
+revision, err := chky.Upload(ctx, &chunky.Upload{
 	From:  virt.OS("."),
 	To:    to,
 	Cache: virt.OS(cacheDir),
@@ -191,13 +198,13 @@ On the host, receive the stream into a repository:
 
 ```go
 repo := local.New(virt.OS("/var/lib/my-repo"))
-revision, err := chunky.New(logs.Default()).Receive(ctx, &chunky.Receive{
+revision, err := chky.Receive(ctx, &chunky.Receive{
 	From: os.Stdin,
 	To:   repo,
 })
 if errors.Is(err, chunky.ErrStale) {
 	// The upload references a pack the repository doesn't have. The client
-	// should clear its cache, read the base again and retry once.
+	// should clear its cache and retry once.
 }
 ```
 

@@ -1,13 +1,13 @@
 # 0.6.0 / 2026-10-27
 
 - add: uploading over a one-way pipe like SSH stdin. `Upload` to `stream.New(w)`, then `Client.Receive` on the other end, which returns `ErrStale` when the upload references a pack the repository doesn't have
-- add: `chunky upload <dir> -` streams an upload to stdout, and `chunky upload - <repo>` receives one from stdin, e.g. `chunky upload . - | ssh host chunky upload - my-repo`
-- fix: the CLI logs to stderr instead of stdout
-- add: `Upload.Base` to skip the files of a commit the repository already has, when it can't be read
-- add: `chunky.UnpackCommit`, the inverse of `(*Commit).Pack`
+- add: `chunky upload <dir> -` streams an upload to stdout, and `chunky upload - <repo>` receives one from stdin, e.g. `chunky upload . - --base host/my-repo | ssh host chunky upload - my-repo`
+- add: `Upload.Base` and `chunky upload --base <repo>` to skip the files of a commit the repository already has, when it can't be read
 - add: `repos.Writer`, a write-only repository that `repos.Repo` embeds
 - fix: syncing the upload cache stopped at the first cached commit, so it missed newer commits and never pruned deleted ones
+- fix: the CLI logs to stderr instead of stdout
 - fix: `FindCommit` wraps `fs.ErrNotExist` when a revision doesn't exist
+- **BREAKING:** `FindCommit` takes the repository and revision as arguments: `chky.FindCommit(ctx, repo, "latest")`
 - **BREAKING:** `Upload.To` is now a `repos.Writer`. Every `repos.Repo` still works, but code that reads the field back as a `repos.Repo` needs a type assertion
 
 # 0.5.0 / 2026-10-25
