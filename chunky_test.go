@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
@@ -284,8 +283,7 @@ func TestReceive(t *testing.T) {
 	is.Equal(countPacks(t, hostDir), 2)
 }
 
-// missing round-trips the client's manifest and the host's answer through
-// JSON, like a client asking a host over a pipe
+// missing asks host which of the files in from it's missing
 func missing(t testing.TB, host repos.Repo, from virt.Tree) chunky.Manifest {
 	t.Helper()
 	is := is.New(t)
@@ -293,16 +291,9 @@ func missing(t testing.TB, host repos.Repo, from virt.Tree) chunky.Manifest {
 	chky := chunky.New(logs.Discard())
 	manifest, err := chky.Manifest(ctx, &chunky.Upload{From: from})
 	is.NoErr(err)
-	buf := new(bytes.Buffer)
-	is.NoErr(json.NewEncoder(buf).Encode(manifest))
-	var received chunky.Manifest
-	is.NoErr(json.NewDecoder(buf).Decode(&received))
-	missing, err := chky.Missing(ctx, host, received)
+	missing, err := chky.Missing(ctx, host, manifest)
 	is.NoErr(err)
-	is.NoErr(json.NewEncoder(buf).Encode(missing))
-	var answer chunky.Manifest
-	is.NoErr(json.NewDecoder(buf).Decode(&answer))
-	return answer
+	return missing
 }
 
 func TestMissing(t *testing.T) {
