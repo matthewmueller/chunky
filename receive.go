@@ -14,8 +14,8 @@ import (
 )
 
 // ErrStale means the upload references a pack or file the repository
-// doesn't have, usually because the uploader's cache is out of date. Clear the
-// cache, or ask for Missing again, and retry.
+// doesn't have, usually because the uploader's cache is from another
+// repository. Clear the cache and retry.
 var ErrStale = errors.New("chunky: stale upload")
 
 // Receive an upload streamed by repos/stream into a repository. Packs are
@@ -71,23 +71,22 @@ func resolve(ctx context.Context, repo repos.Repo, commitData []byte) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
-	var have map[string]string
-	resolved := false
-	for _, file := range commit.Files() {
-		if file.PackId != "" {
+	var have map[file]string
+	for _, f := range commit.Files() {
+		if f.PackId != "" {
 			continue
 		}
+		// Only index when the commit references files, since it reads every commit
 		if have == nil {
 			if have, err = index(ctx, repo); err != nil {
 				return nil, err
 			}
 		}
-		packId, ok := have[indexKey(file.Path, file.Id)]
+		packId, ok := have[file{f.Path, f.Id}]
 		if !ok {
-			return nil, fmt.Errorf("%w: missing file %s", ErrStale, file.Path)
+			return nil, fmt.Errorf("%w: missing file %s", ErrStale, f.Path)
 		}
-		file.PackId = packId
-		resolved = true
+		f.PackId = packId
 	}
 
 	des, err := repo.ReadDir("packs")
@@ -102,9 +101,6 @@ func resolve(ctx context.Context, repo repos.Repo, commitData []byte) ([]byte, e
 		if !packs[pack.ID] {
 			return nil, fmt.Errorf("%w: missing pack %s", ErrStale, pack.ID)
 		}
-	}
-	if !resolved {
-		return commitData, nil
 	}
 	return commit.Pack()
 }

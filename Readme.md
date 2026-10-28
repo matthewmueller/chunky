@@ -203,7 +203,7 @@ repo := local.New(virt.OS("/var/lib/my-repo"))
 revision, err := chky.Receive(ctx, os.Stdin, repo)
 if errors.Is(err, chunky.ErrStale) {
 	// The upload references a pack or file the repository doesn't have. The
-	// client should clear its cache, or ask for Missing again, and retry once.
+	// client should clear its cache and retry once.
 }
 ```
 
