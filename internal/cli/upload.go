@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"slices"
+	"strings"
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky"
@@ -110,14 +111,34 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 	return nil
 }
 
+// uploadFlags returns the flags that only apply when uploading a directory.
+// A stream already carries its tags and was packed by the sender.
+func (u *Upload) uploadFlags() (flags []string) {
+	if len(u.Tags) > 0 {
+		flags = append(flags, "--tags")
+	}
+	if !slices.Equal(u.Paths, []string{"."}) {
+		flags = append(flags, "--paths")
+	}
+	if u.LimitUpload != "" {
+		flags = append(flags, "--limit-upload")
+	}
+	if u.Concurrency != nil {
+		flags = append(flags, "--concurrency")
+	}
+	if u.Base != "" {
+		flags = append(flags, "--base")
+	}
+	return flags
+}
+
 // receive a stream from another chunky upload on stdin
 func (c *CLI) receive(ctx context.Context, in *Upload) error {
 	if in.To == "-" {
 		return errors.New("cli: upload can't stream from stdin to stdout")
 	}
-	// The stream already carries its tags and was packed by the sender
-	if len(in.Tags) > 0 || !slices.Equal(in.Paths, []string{"."}) || in.LimitUpload != "" || in.Concurrency != nil || in.Base != "" {
-		return errors.New("cli: --tags, --paths, --limit-upload, --concurrency and --base don't apply when uploading from stdin")
+	if flags := in.uploadFlags(); len(flags) > 0 {
+		return fmt.Errorf("cli: %s can't be used when uploading from stdin", strings.Join(flags, ", "))
 	}
 
 	repo, err := c.loadRepo(in.To)
