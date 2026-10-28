@@ -217,7 +217,7 @@ func deploy(t testing.TB, host repos.Repo, in *chunky.Upload) (string, error) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		revision, err := chky.Receive(ctx, &chunky.Receive{From: pr, To: host})
+		revision, err := chky.Receive(ctx, pr, host)
 		// Unblock the client, like a host exiting
 		pr.CloseWithError(errors.Join(err, io.ErrClosedPipe))
 		done <- result{revision, err}
@@ -352,7 +352,7 @@ func receive(t testing.TB, host repos.Repo, files ...string) error {
 		is.NoErr(err)
 	}
 	is.NoErr(tw.Close())
-	_, err := chunky.New(logs.Discard()).Receive(context.Background(), &chunky.Receive{From: buf, To: host})
+	_, err := chunky.New(logs.Discard()).Receive(context.Background(), buf, host)
 	return err
 }
 
@@ -411,14 +411,14 @@ func TestReceiveCut(t *testing.T) {
 
 	// Cut in half
 	hostDir := t.TempDir()
-	_, err = chky.Receive(ctx, &chunky.Receive{From: bytes.NewReader(full[:len(full)/2]), To: local.New(virt.OS(hostDir))})
+	_, err = chky.Receive(ctx, bytes.NewReader(full[:len(full)/2]), local.New(virt.OS(hostDir)))
 	is.True(err != nil)
 	_, err = os.Stat(filepath.Join(hostDir, "commits"))
 	is.True(errors.Is(err, fs.ErrNotExist))
 
 	// Cut between the commit and the tags
 	hostDir = t.TempDir()
-	_, err = chky.Receive(ctx, &chunky.Receive{From: bytes.NewReader(cutBefore(t, full, "tags/")), To: local.New(virt.OS(hostDir))})
+	_, err = chky.Receive(ctx, bytes.NewReader(cutBefore(t, full, "tags/")), local.New(virt.OS(hostDir)))
 	is.True(err != nil)
 	is.Equal(countPacks(t, hostDir), 1)
 	_, err = os.Stat(filepath.Join(hostDir, "commits"))
@@ -426,6 +426,6 @@ func TestReceiveCut(t *testing.T) {
 
 	// The whole stream
 	hostDir = t.TempDir()
-	_, err = chky.Receive(ctx, &chunky.Receive{From: bytes.NewReader(full), To: local.New(virt.OS(hostDir))})
+	_, err = chky.Receive(ctx, bytes.NewReader(full), local.New(virt.OS(hostDir)))
 	is.NoErr(err)
 }

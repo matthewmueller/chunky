@@ -198,10 +198,7 @@ On the host, receive the stream into a repository:
 
 ```go
 repo := local.New(virt.OS("/var/lib/my-repo"))
-revision, err := chky.Receive(ctx, &chunky.Receive{
-	From: os.Stdin,
-	To:   repo,
-})
+revision, err := chky.Receive(ctx, os.Stdin, repo)
 if errors.Is(err, chunky.ErrStale) {
 	// The upload references a pack the repository doesn't have. The client
 	// should clear its cache and retry once.

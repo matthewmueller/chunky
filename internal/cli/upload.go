@@ -126,10 +126,7 @@ func (c *CLI) receive(ctx context.Context, in *Upload) error {
 	}
 	defer repo.Close()
 
-	revision, err := c.chunky.Receive(ctx, &chunky.Receive{
-		From: c.Stdin,
-		To:   repo,
-	})
+	revision, err := c.chunky.Receive(ctx, c.Stdin, repo)
 	if errors.Is(err, chunky.ErrStale) {
 		return fmt.Errorf("%w. Run `chunky cache-prune -` where you uploaded from and retry", err)
 	} else if err != nil {

@@ -1,6 +1,6 @@
 # 0.6.0 / 2026-10-27
 
-- add: uploading over a one-way pipe like SSH stdin. `Upload` to `stream.New(w)`, then `Client.Receive` on the other end, which returns `ErrStale` when the upload references a pack the repository doesn't have
+- add: uploading over a one-way pipe like SSH stdin. `Upload` to `stream.New(w)`, then `chky.Receive(ctx, r, repo)` on the other end, which returns `ErrStale` when the upload references a pack the repository doesn't have
 - add: `chunky upload <dir> -` streams an upload to stdout, and `chunky upload - <repo>` receives one from stdin, e.g. `chunky upload . - --base host/my-repo | ssh host chunky upload - my-repo`
 - add: `Upload.Base` and `chunky upload --base <repo>` to skip the files of a commit the repository already has, when it can't be read
 - add: `repos.Writer`, a write-only repository that `repos.Repo` embeds

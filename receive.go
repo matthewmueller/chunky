@@ -18,41 +18,22 @@ import (
 // retry.
 var ErrStale = errors.New("chunky: stale upload")
 
-type Receive struct {
-	From io.Reader
-	To   repos.Repo
-}
-
-func (in *Receive) validate() (err error) {
-	if in.From == nil {
-		err = errors.Join(err, errors.New("missing from reader"))
-	}
-	if in.To == nil {
-		err = errors.Join(err, errors.New("missing to repository"))
-	}
-	return err
-}
-
 // Receive an upload streamed by repos/stream into a repository. Packs are
 // written as they arrive, but the commit and its tags are only written once
 // the stream ends with the latest tag, so a cut stream leaves at most orphan
 // packs.
-func (c *Client) Receive(ctx context.Context, in *Receive) (revision string, err error) {
-	if err := in.validate(); err != nil {
-		return "", fmt.Errorf("invalid receive input: %w", err)
-	}
-
+func (c *Client) Receive(ctx context.Context, from io.Reader, to repos.Repo) (revision string, err error) {
 	var commit *repos.File
 	var tags []*repos.File
 	latest := false
-	if err := stream.Read(in.From, func(file *repos.File) error {
+	if err := stream.Read(from, func(file *repos.File) error {
 		dir, name := path.Split(file.Path)
 		switch {
 		case dir == "packs/" && commit == nil:
-			return in.To.Upload(ctx, file)
+			return to.Upload(ctx, file)
 		case dir == "commits/" && commit == nil:
 			commit, revision = file, name
-			return checkPacks(in.To, file.Data)
+			return checkPacks(to, file.Data)
 		case dir == "tags/" && commit != nil:
 			if string(file.Data) != revision {
 				return fmt.Errorf("tag %q doesn't name commit %s", name, revision)
@@ -71,7 +52,7 @@ func (c *Client) Receive(ctx context.Context, in *Receive) (revision string, err
 	}
 
 	for _, file := range append([]*repos.File{commit}, tags...) {
-		if err := in.To.Upload(ctx, file); err != nil {
+		if err := to.Upload(ctx, file); err != nil {
 			return "", fmt.Errorf("unable to upload %q: %w", file.Path, err)
 		}
 	}
