@@ -45,10 +45,13 @@ func TestDownloadPrunesStale(t *testing.T) {
 	is.NoErr(err)
 	is.NoErr(cache.Download(ctx, local.New(repoFS)))
 
-	_, ok := cache.Get("kept.txt", "kept.txt-hash")
+	kept, ok := cache.Get("kept.txt", "kept.txt-hash")
 	is.True(ok)
-	_, ok = cache.Get("stale.txt", "stale.txt-hash")
+	is.True(kept != nil)
+	stale, ok := cache.Get("stale.txt", "stale.txt-hash")
 	is.True(!ok)
-	_, err = fs.Stat(cacheFS, staleId)
+	is.Equal(stale, nil)
+	info, err := fs.Stat(cacheFS, staleId)
 	is.True(errors.Is(err, fs.ErrNotExist))
+	is.Equal(info, nil)
 }
