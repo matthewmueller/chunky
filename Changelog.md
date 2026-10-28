@@ -1,4 +1,4 @@
-# 0.6.0 / 2026-10-27
+# 0.6.0 / 2026-10-28
 
 - add: uploading over a one-way pipe like SSH stdin. `Upload` to `stream.New(w)`, then `chky.Receive(ctx, r, repo)` on the other end, which returns `ErrStale` when the upload references a pack the repository doesn't have
 - add: `chunky upload <dir> -` streams an upload to stdout, and `chunky upload - <repo>` receives one from stdin, e.g. `chunky upload . - --base host/my-repo | ssh host chunky upload - my-repo`
