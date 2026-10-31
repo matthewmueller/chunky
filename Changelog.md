@@ -1,5 +1,6 @@
 # 0.7.0 / 2026-10-31
 
+- simplify and remove code
 - fix: `download`, `show` and `FindCommit` failed for tags made with `chunky tag`
 - fix: `list` and `tags` say when the repository doesn't exist
 - **BREAKING:** remove the local upload cache: `Upload.Cache`, `chunky cache-prune` and `chunky cache-size`. Uploads now read the newest commit of each of the repository's tags, including `latest`, and only send files those commits don't contain. Nothing is stored locally, so `~/Library/Caches/chunky` can be deleted
