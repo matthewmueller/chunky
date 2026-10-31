@@ -20,11 +20,7 @@ func (c *Create) command(cli cli.Command) cli.Command {
 }
 
 func (c *CLI) Create(ctx context.Context, in *Create) error {
-	repoUrl, err := repos.Parse(in.Repo)
-	if err != nil {
-		return err
-	}
-	repo, err := c.loadRepoFromUrl(repoUrl)
+	repo, err := c.loadRepo(in.Repo)
 	if err != nil {
 		return err
 	}

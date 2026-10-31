@@ -38,22 +38,19 @@ func TestUploadDownload(t *testing.T) {
 
 	repo := http_repo.New(server.URL + "/repo")
 	repo.Client = server.Client()
-	cache := virt.OS(t.TempDir())
 	chky := chunky.New(log)
 	revision, err := chky.Upload(ctx, &chunky.Upload{
-		From:  from,
-		To:    repo,
-		Cache: cache,
+		From: from,
+		To:   repo,
 	})
 	is.NoErr(err)
 	is.True(revision != "")
 
-	// Upload again so the cache downloads the commits listed by the server
+	// Upload again so the index reads the commits served over HTTP
 	from["b.txt"].Data = []byte("b2")
 	revision, err = chky.Upload(ctx, &chunky.Upload{
-		From:  from,
-		To:    repo,
-		Cache: virt.OS(t.TempDir()),
+		From: from,
+		To:   repo,
 	})
 	is.NoErr(err)
 	is.True(revision != "")

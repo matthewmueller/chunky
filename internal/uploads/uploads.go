@@ -21,7 +21,7 @@ import (
 const kiB = 1024
 const miB = 1024 * kiB
 
-func New(log *slog.Logger, repo repos.Writer, concurrency int) *Upload {
+func New(log *slog.Logger, repo repos.Repo, concurrency int) *Upload {
 	return &Upload{
 		log:  log,
 		repo: repo,
@@ -42,7 +42,7 @@ func New(log *slog.Logger, repo repos.Writer, concurrency int) *Upload {
 
 type Upload struct {
 	log  *slog.Logger
-	repo repos.Writer
+	repo repos.Repo
 
 	MaxPackSize  int
 	MinChunkSize int

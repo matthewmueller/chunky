@@ -1,9 +1,12 @@
-# 0.7.0 / 2026-10-28
+# 0.7.0 / 2026-10-31
 
-- add: uploading without a cache by asking the receiver what it already has. `chky.Manifest(ctx, upload)` lists the files and hashes on the client, `chky.Matches(ctx, repo, manifest)` answers with the ones the repository has from any commit, and `Upload.Matches` adds them to the cache so only the rest are sent. Encode the `Manifest` and matches with whatever your transport uses, like JSON
-- add: `Upload.Cache` is optional
 - fix: `download`, `show` and `FindCommit` failed for tags made with `chunky tag`
-- **BREAKING:** replace `Upload.Base` with `Upload.Matches`, and remove `chunky upload --base`
+- fix: `list` and `tags` say when the repository doesn't exist
+- **BREAKING:** remove the local upload cache: `Upload.Cache`, `chunky cache-prune` and `chunky cache-size`. Uploads now read the newest commit of each of the repository's tags, including `latest`, and only send files those commits don't contain. Nothing is stored locally, so `~/Library/Caches/chunky` can be deleted
+- **BREAKING:** remove uploading over one-way streams: `repos/stream`, `chky.Receive`, `ErrStale`, `repos.Writer` and `chunky upload -`. A stream can't read the repository, so its cache went stale whenever you streamed to more than one repository. Upload over SFTP instead, e.g. `chunky upload . user@host:22/my-repo`
+- **BREAKING:** remove `Upload.Base` and `chunky upload --base`
+- **BREAKING:** `Upload.To` is a `repos.Repo` again
+- **BREAKING:** `FindCommit` takes a `*FindCommit` again, like the other `Client` methods: `chky.FindCommit(ctx, &chunky.FindCommit{Repo: repo, Revision: "latest"})`
 
 # 0.6.0 / 2026-10-28
 

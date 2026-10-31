@@ -2,6 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"text/tabwriter"
 
 	"github.com/livebud/cli"
@@ -25,7 +28,9 @@ func (c *CLI) Tags(ctx context.Context, in *Tags) error {
 		return err
 	}
 	tags, err := tags.ReadAll(ctx, repo)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("cli: repo %q not found", in.Repo)
+	} else if err != nil {
 		return err
 	}
 	writer := tabwriter.NewWriter(c.Stdout, 0, 0, 1, ' ', 0)

@@ -39,22 +39,6 @@ func (t *Tag) File() *repos.File {
 	}
 }
 
-func Latest(ref string) *repos.File {
-	return &repos.File{
-		Path: filepath.Join("tags", "latest"),
-		Mode: 0644,
-		Data: []byte(ref),
-	}
-}
-
-func New(name, ref string) *repos.File {
-	return &repos.File{
-		Path: filepath.Join("tags", name),
-		Mode: 0644,
-		Data: []byte(ref),
-	}
-}
-
 // Read a tag by name
 func Read(ctx context.Context, repo repos.Repo, name string) (*Tag, error) {
 	tagFile, err := repos.Download(ctx, repo, filepath.Join("tags", name))
@@ -72,7 +56,7 @@ func Read(ctx context.Context, repo repos.Repo, name string) (*Tag, error) {
 func ReadAll(ctx context.Context, repo repos.Repo) (tags []*Tag, err error) {
 	des, err := repo.ReadDir("tags")
 	if err != nil {
-		return nil, fmt.Errorf("caches: unable to read commits directory: %w", err)
+		return nil, fmt.Errorf("tags: unable to read tags directory: %w", err)
 	}
 	for _, de := range des {
 		tag, err := Read(ctx, repo, de.Name())
@@ -91,7 +75,7 @@ func ReadMap(ctx context.Context, repo repos.Repo) (map[string][]*Tag, error) {
 	tags := map[string][]*Tag{}
 	des, err := repo.ReadDir("tags")
 	if err != nil {
-		return nil, fmt.Errorf("caches: unable to read commits directory: %w", err)
+		return nil, fmt.Errorf("tags: unable to read tags directory: %w", err)
 	}
 	for _, de := range des {
 		tag, err := Read(ctx, repo, de.Name())

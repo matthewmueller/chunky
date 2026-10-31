@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -23,7 +22,6 @@ import (
 	"github.com/matthewmueller/chunky/repos/sftp"
 	"github.com/matthewmueller/logs"
 	"github.com/matthewmueller/prompter"
-	"github.com/matthewmueller/text"
 	"github.com/matthewmueller/virt"
 )
 
@@ -42,7 +40,6 @@ func Default() *CLI {
 	return &CLI{
 		os.Stdout,
 		os.Stderr,
-		os.Stdin,
 		".",
 		prompter.Default(),
 		color.Default(),
@@ -55,7 +52,6 @@ func Default() *CLI {
 type CLI struct {
 	Stdout io.Writer
 	Stderr io.Writer
-	Stdin  io.Reader
 	Dir    string
 	Prompt *prompter.Prompt
 	Color  color.Writer
@@ -73,10 +69,6 @@ func (c *CLI) loadRepo(path string) (repos.Repo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cli: parsing repo path: %w", err)
 	}
-	return c.loadRepoFromUrl(url)
-}
-
-func (c *CLI) loadRepoFromUrl(url *url.URL) (repos.Repo, error) {
 	switch url.Scheme {
 	case "file":
 		return local.New(virt.OS(url.Path)), nil
@@ -100,39 +92,6 @@ func (c *CLI) loadFS(path string) (repos.FS, error) {
 	default:
 		return nil, fmt.Errorf("cli: unsupported repo scheme: %s", url.Scheme)
 	}
-}
-
-func cacheDir() (string, error) {
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return "", fmt.Errorf("cli: getting user cache dir: %w", err)
-	}
-	dir := filepath.Join(cacheDir, "chunky")
-	return dir, nil
-}
-
-func cacheName(repoUrl *url.URL) string {
-	return text.Slug(repoUrl.String())
-}
-
-func (c *CLI) cacheDir(repoUrl *url.URL) (string, error) {
-	cacheDir, err := cacheDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(cacheDir, cacheName(repoUrl))
-	return dir, nil
-}
-
-func (c *CLI) loadCache(repoUrl *url.URL) (repos.FS, error) {
-	cacheDir, err := c.cacheDir(repoUrl)
-	if err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return nil, fmt.Errorf("cli: creating cache dir: %w", err)
-	}
-	return virt.OS(cacheDir), nil
 }
 
 func (c *CLI) getUser() (string, error) {
@@ -314,22 +273,6 @@ func (c *CLI) Parse(ctx context.Context, args ...string) error {
 		cmd := in.command(cli)
 		cmd.Run(c.wrap(func(ctx context.Context) error {
 			return c.Tags(ctx, in)
-		}))
-	}
-
-	{ // cache prune <repo>
-		in := &CachePrune{}
-		cmd := in.command(cli)
-		cmd.Run(c.wrap(func(ctx context.Context) error {
-			return c.CachePrune(ctx, in)
-		}))
-	}
-
-	{ // cache size [repo]
-		in := &CacheSize{}
-		cmd := in.command(cli)
-		cmd.Run(c.wrap(func(ctx context.Context) error {
-			return c.CacheSize(ctx, in)
 		}))
 	}
 

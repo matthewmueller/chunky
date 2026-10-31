@@ -2,16 +2,10 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
-	"slices"
-	"strings"
 
 	"github.com/livebud/cli"
 	"github.com/matthewmueller/chunky"
-	"github.com/matthewmueller/chunky/repos"
-	"github.com/matthewmueller/chunky/repos/stream"
 )
 
 type Upload struct {
@@ -26,8 +20,8 @@ type Upload struct {
 
 func (u *Upload) command(cli cli.Command) cli.Command {
 	cmd := cli.Command("upload", "upload a directory to a repository")
-	cmd.Arg("from", "directory to upload, or - to receive a stream from stdin").String(&u.From)
-	cmd.Arg("repo", "repository to upload to, or - to stream to stdout").String(&u.To)
+	cmd.Arg("from", "directory to upload").String(&u.From)
+	cmd.Arg("repo", "repository to upload to").String(&u.To)
 	cmd.Flag("tags", "tag the revision").Short('t').Optional().Strings(&u.Tags)
 	cmd.Flag("paths", "subpaths to upload").Strings(&u.Paths).Default(".")
 	cmd.Flag("limit-upload", "limit bytes per second").String(&u.LimitUpload).Default("")
@@ -36,25 +30,7 @@ func (u *Upload) command(cli cli.Command) cli.Command {
 }
 
 func (c *CLI) Upload(ctx context.Context, in *Upload) error {
-	if in.From == "-" {
-		return c.receive(ctx, in)
-	}
-
-	repoUrl, err := repos.Parse(in.To)
-	if err != nil {
-		return err
-	}
-
-	// Stream to stdout for another chunky upload to receive, e.g. over ssh
-	var to repos.Writer
-	if in.To == "-" {
-		to = stream.New(nopCloser{c.Stdout})
-	} else if to, err = c.loadRepoFromUrl(repoUrl); err != nil {
-		return err
-	}
-	defer to.Close()
-
-	cache, err := c.loadCache(repoUrl)
+	repo, err := c.loadRepo(in.To)
 	if err != nil {
 		return err
 	}
@@ -71,73 +47,17 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 
 	revision, err := c.chunky.Upload(ctx, &chunky.Upload{
 		From:        fsys,
-		To:          to,
+		To:          repo,
 		Tags:        in.Tags,
 		Paths:       in.Paths,
 		User:        user,
-		Cache:       cache,
 		LimitUpload: in.LimitUpload,
 		Concurrency: in.Concurrency,
 	})
 	if err != nil {
 		return err
 	}
-	if err := to.Close(); err != nil {
-		return err
-	}
-
-	// Stdout is taken by the stream
-	if in.To != "-" {
-		fmt.Fprintln(c.Stdout, revision)
-	}
-	return nil
-}
-
-// uploadFlags returns the flags set on in that only apply when uploading a
-// directory.
-// A stream already carries its tags and was packed by the sender.
-func uploadFlags(in *Upload) (flags []string) {
-	if len(in.Tags) > 0 {
-		flags = append(flags, "--tags")
-	}
-	if !slices.Equal(in.Paths, []string{"."}) {
-		flags = append(flags, "--paths")
-	}
-	if in.LimitUpload != "" {
-		flags = append(flags, "--limit-upload")
-	}
-	if in.Concurrency != nil {
-		flags = append(flags, "--concurrency")
-	}
-	return flags
-}
-
-// receive a stream from another chunky upload on stdin
-func (c *CLI) receive(ctx context.Context, in *Upload) error {
-	if in.To == "-" {
-		return errors.New("cli: upload can't stream from stdin to stdout")
-	}
-	if flags := uploadFlags(in); len(flags) > 0 {
-		return fmt.Errorf("cli: %s can't be used when uploading from stdin", strings.Join(flags, ", "))
-	}
-
-	repo, err := c.loadRepo(in.To)
-	if err != nil {
-		return err
-	}
-	defer repo.Close()
-
-	revision, err := c.chunky.Receive(ctx, c.Stdin, repo)
-	if errors.Is(err, chunky.ErrStale) {
-		return fmt.Errorf("%w. Run `chunky cache-prune -` where you uploaded from and retry", err)
-	} else if err != nil {
-		return err
-	}
 
 	fmt.Fprintln(c.Stdout, revision)
 	return nil
 }
-
-type nopCloser struct{ io.Writer }
-
-func (nopCloser) Close() error { return nil }

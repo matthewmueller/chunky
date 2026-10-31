@@ -70,9 +70,8 @@ func TestUploadDownload(t *testing.T) {
 	repo := sftp_repo.New(sftpClient, "")
 	chky := chunky.New(log)
 	revision, err := chky.Upload(ctx, &chunky.Upload{
-		From:  from,
-		To:    repo,
-		Cache: virt.OS(t.TempDir()),
+		From: from,
+		To:   repo,
 	})
 	is.NoErr(err)
 	is.True(revision != "")
@@ -112,13 +111,11 @@ func TestUploadDownloadSymlink(t *testing.T) {
 	}
 
 	repo := sftp_repo.New(sftpClient, "")
-	cache := virt.OS(t.TempDir())
 
 	chky := chunky.New(log)
 	revision, err := chky.Upload(ctx, &chunky.Upload{
-		From:  from,
-		To:    repo,
-		Cache: cache,
+		From: from,
+		To:   repo,
 	})
 	is.NoErr(err)
 	is.True(revision != "")
@@ -147,11 +144,10 @@ func TestUploadDownloadSymlink(t *testing.T) {
 	// Change to a symlink
 	from["from.txt"].Mode = 0755 | fs.ModeSymlink
 
-	// Try again, with the cache
+	// Try again
 	revision, err = chky.Upload(ctx, &chunky.Upload{
-		From:  from,
-		To:    repo,
-		Cache: cache,
+		From: from,
+		To:   repo,
 	})
 	is.NoErr(err)
 	is.True(revision != "")
