@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/matthewmueller/chunky/internal/tags"
 	"github.com/matthewmueller/chunky/internal/timeid"
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/segmentio/ksuid"
@@ -27,17 +28,6 @@ func New(user string, createdAt time.Time) *Commit {
 		id:        ksuid.New().String(),
 		user:      user,
 		createdAt: createdAt,
-	}
-}
-
-// Invalid commit. This can occur when the commit is using an old format.
-func Invalid(id string) *Commit {
-	return &Commit{
-		id:        id,
-		user:      "",
-		createdAt: time.Time{},
-		size:      0,
-		files:     nil,
 	}
 }
 
@@ -200,24 +190,6 @@ func Unpack(data []byte) (*Commit, error) {
 	}, nil
 }
 
-func resolveRevision(ctx context.Context, repo repos.Repo, revision string) (sha string, err error) {
-	// Try to download the commit directly
-	if _, err := repos.Download(ctx, repo, path.Join("commits", revision)); err == nil {
-		return revision, nil
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("commits: unable to download commit: %w", err)
-	}
-	// Try to download the tag
-	tag, err := repos.Download(ctx, repo, path.Join("tags", revision))
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", fmt.Errorf("commits: revision not found: %s: %w", revision, err)
-		}
-		return "", fmt.Errorf("commits: unable to download tag: %w", err)
-	}
-	return string(tag.Data), nil
-}
-
 func read(ctx context.Context, repo repos.Repo, path string) (*Commit, error) {
 	commitFile, err := repos.Download(ctx, repo, path)
 	if err != nil {
@@ -226,18 +198,34 @@ func read(ctx context.Context, repo repos.Repo, path string) (*Commit, error) {
 	return Unpack(commitFile.Data)
 }
 
+// Read a commit by its id or by a tag
 func Read(ctx context.Context, repo repos.Repo, revision string) (*Commit, error) {
-	commitSha, err := resolveRevision(ctx, repo, revision)
-	if err != nil {
-		return nil, fmt.Errorf("commits: unable to resolve revision %q: %w", revision, err)
+	commit, err := read(ctx, repo, path.Join("commits", revision))
+	if nil == err {
+		return commit, nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("commits: unable to read commit %q: %w", revision, err)
 	}
-	return read(ctx, repo, path.Join("commits", commitSha))
+	// Not a commit id, so read the tag, which lists its commits with the newest
+	// last
+	tag, err := tags.Read(ctx, repo, revision)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("commits: revision not found: %s: %w", revision, err)
+		}
+		return nil, fmt.Errorf("commits: unable to read tag %q: %w", revision, err)
+	}
+	commit, err = read(ctx, repo, path.Join("commits", tag.Newest()))
+	if err != nil {
+		return nil, fmt.Errorf("commits: unable to read commit %q for tag %q: %w", tag.Newest(), revision, err)
+	}
+	return commit, nil
 }
 
 func ReadAll(ctx context.Context, repo repos.Repo) (commits []*Commit, err error) {
 	des, err := repo.ReadDir("commits")
 	if err != nil {
-		return nil, fmt.Errorf("caches: unable to read commits directory: %w", err)
+		return nil, fmt.Errorf("commits: unable to read commits directory: %w", err)
 	}
 	for _, de := range des {
 		fpath := filepath.Join("commits", de.Name())

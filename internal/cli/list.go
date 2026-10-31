@@ -2,6 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"text/tabwriter"
 
 	"github.com/livebud/cli"
@@ -25,7 +28,9 @@ func (c *CLI) List(ctx context.Context, in *List) error {
 		return err
 	}
 	tagMap, err := tags.ReadMap(ctx, repo)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("cli: repo %q not found", in.Repo)
+	} else if err != nil {
 		return err
 	}
 	commits, err := commits.ReadAll(ctx, repo)

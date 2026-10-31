@@ -11,7 +11,6 @@ require (
 	github.com/matthewmueller/logs v0.0.6
 	github.com/matthewmueller/prompter v0.0.2
 	github.com/matthewmueller/sshx v0.0.11
-	github.com/matthewmueller/text v0.0.0-20210424201111-ec1e4af8dfe8
 	github.com/matthewmueller/virt v0.0.14
 	github.com/pkg/sftp v1.13.7
 	github.com/restic/chunker v0.4.1-0.20231001122857-ac4c622f4b08
@@ -24,7 +23,6 @@ require (
 require (
 	github.com/caarlos0/duration v0.0.0-20241219124531-2bb7dc683aa4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/gedex/inflector v0.0.0-20170307190818-16278e9db813 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/kr/fs v0.1.0 // indirect

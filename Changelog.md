@@ -1,3 +1,13 @@
+# 0.7.0 / 2026-10-31
+
+- fix: `download`, `show` and `FindCommit` failed for tags made with `chunky tag`
+- fix: `list` and `tags` say when the repository doesn't exist
+- **BREAKING:** remove the local upload cache: `Upload.Cache`, `chunky cache-prune` and `chunky cache-size`. Uploads now read the newest commit of each of the repository's tags, including `latest`, and only send files those commits don't contain. Nothing is stored locally, so `~/Library/Caches/chunky` can be deleted
+- **BREAKING:** remove uploading over one-way streams: `repos/stream`, `chky.Receive`, `ErrStale`, `repos.Writer` and `chunky upload -`. A stream can't read the repository, so its cache went stale whenever you streamed to more than one repository. Upload over SFTP instead, e.g. `chunky upload . user@host:22/my-repo`
+- **BREAKING:** remove `Upload.Base` and `chunky upload --base`
+- **BREAKING:** `Upload.To` is a `repos.Repo` again
+- **BREAKING:** `FindCommit` takes a `*FindCommit` again, like the other `Client` methods: `chky.FindCommit(ctx, &chunky.FindCommit{Repo: repo, Revision: "latest"})`
+
 # 0.6.0 / 2026-10-28
 
 - add: uploading over a one-way pipe like SSH stdin. `Upload` to `stream.New(w)`, then `chky.Receive(ctx, r, repo)` on the other end, which returns `ErrStale` when the upload references a pack the repository doesn't have

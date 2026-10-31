@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/matthewmueller/chunky/internal/caches"
 	"github.com/matthewmueller/chunky/internal/chunkyignore"
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/rate"
 	"github.com/matthewmueller/chunky/internal/sha256"
+	"github.com/matthewmueller/chunky/internal/tags"
 	"github.com/matthewmueller/chunky/internal/uploads"
 	"github.com/matthewmueller/chunky/repos"
 	"github.com/matthewmueller/logs"
@@ -25,14 +25,8 @@ import (
 )
 
 type Upload struct {
-	From  repos.ReadFS
-	To    repos.Writer
-	Cache repos.FS
-
-	// Base is a commit To already has, for when To can't be read. It's added
-	// to Cache, so only files missing from it are sent.
-	Base *Commit
-
+	From   repos.ReadFS
+	To     repos.Repo
 	User   string
 	Tags   []string
 	Paths  []string
@@ -66,9 +60,6 @@ func (in *Upload) validate() (err error) {
 	}
 	if in.To == nil {
 		err = errors.Join(err, errors.New("missing to repository"))
-	}
-	if in.Cache == nil {
-		err = errors.Join(err, errors.New("missing cache"))
 	}
 
 	// Default to the current user
@@ -177,30 +168,14 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	if err := in.validate(); err != nil {
 		return "", fmt.Errorf("invalid upload input: %w", err)
 	}
-
 	log := logs.Scope(c.log)
 
-	// Load the cache, starting from the base if there is one
-	cache, err := caches.Load(c.log, in.Cache)
+	// Index the files the repo's tagged commits already have
+	index, err := indexTags(ctx, log, in.To)
 	if err != nil {
-		return "", fmt.Errorf("unable to load the cache: %w", err)
-	}
-	if in.Base != nil {
-		if err := cache.Add(in.Base); err != nil {
-			return "", fmt.Errorf("unable to cache base %q: %w", in.Base.ID(), err)
-		}
+		return "", err
 	}
 
-	// Sync the cache with To when we can read it
-	if repo, ok := in.To.(repos.Repo); ok {
-		now := time.Now()
-		if err := cache.Download(ctx, repo); err != nil {
-			return "", fmt.Errorf("unable to download latest commits from the cache: %w", err)
-		}
-		log.Debug("downloaded latest commits from the cache", slog.Duration("in", time.Since(now)))
-	}
-
-	ignore := in.Ignore
 	createdAt := time.Now().UTC()
 	commit := commits.New(in.User, createdAt)
 	commitId := commit.ID()
@@ -211,83 +186,59 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	upload.MaxChunkSize = in.maxChunkSize
 	upload.Limiter = rate.New(in.limitUpload)
 
-	// Walk over the files, chunk them and add them to the file system we're going
-	// to upload. We'll also add each file to the commit object.
-	for _, p := range in.Paths {
-		if err := fs.WalkDir(in.From, p, func(fpath string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			} else if d.IsDir() {
-				if ignore(fpath) {
-					log.Debug("ignoring directory", slog.String("path", fpath))
-					return fs.SkipDir
-				}
-				return nil
-			} else if ignore(fpath) {
-				log.Debug("ignoring file", slog.String("path", fpath))
-				return nil
-			}
-
-			// Hash the file into a sha256 hash, this reads the file in chunks, rather
-			// than loading the entire file into memory.
-			fileHash, err := sha256.HashFile(in.From, fpath, in.maxChunkSize)
-			if err != nil {
-				return fmt.Errorf("unable to hash file %q: %w", fpath, err)
-			}
-
-			// Check if the file is already in the pack. This will duplicate content
-			// if the file path in the pack is different from the file path in the
-			// commit. To fix this, we also ensure the file paths are the same.
-			// TODO: We should add a way to alias files in the pack to other packs.
-			if cacheFile, ok := cache.Get(fpath, fileHash); ok {
-				log.Debug("file already in cache", slog.String("path", fpath))
-				commit.Add(cacheFile)
-				return nil
-			}
-
-			// Get the file lstat
-			lstat, err := in.From.Lstat(fpath)
-			if err != nil {
-				return fmt.Errorf("unable to lstat file %q: %w", fpath, err)
-			}
-
-			// Create a reader for the file data, handling symlinks
-			reader, err := openReader(in.From, fpath, lstat)
-			if err != nil {
-				return fmt.Errorf("unable to open reader %q: %w", fpath, err)
-			}
-
-			// Add the file to the pack
-			packId, err := upload.Add(ctx, &uploads.File{
-				Reader:  reader,
-				Path:    fpath,
-				Hash:    fileHash,
-				Mode:    lstat.Mode(),
-				Size:    lstat.Size(),
-				ModTime: lstat.ModTime(),
-			})
-			if err != nil {
-				return fmt.Errorf("unable to add file %q to pack: %w", fpath, err)
-			}
-
-			log.Debug("added file to pack",
-				slog.String("commit_id", commitId),
-				slog.String("path", fpath),
-				slog.String("pack_id", packId),
-			)
-
-			// Add the file to the commit
-			commit.Add(&commits.File{
-				Path:   fpath,
-				Id:     fileHash,
-				PackId: packId,
-				Size:   uint64(lstat.Size()),
-			})
-
+	// Chunk the files into packs, and add each file to the commit
+	if err := in.walk(log, func(fpath, fileHash string) error {
+		// Check if the file is already in the pack. This will duplicate content
+		// if the file path in the pack is different from the file path in the
+		// commit. To fix this, we also ensure the file paths are the same.
+		// TODO: We should add a way to alias files in the pack to other packs.
+		if file, ok := index[indexKey(fpath, fileHash)]; ok {
+			log.Debug("file already in repo", slog.String("path", fpath))
+			commit.Add(file)
 			return nil
-		}); err != nil {
-			return "", fmt.Errorf("unable to walk directory %q: %w", p, err)
 		}
+
+		// Get the file lstat
+		lstat, err := in.From.Lstat(fpath)
+		if err != nil {
+			return fmt.Errorf("unable to lstat file %q: %w", fpath, err)
+		}
+
+		// Create a reader for the file data, handling symlinks
+		reader, err := openReader(in.From, fpath, lstat)
+		if err != nil {
+			return fmt.Errorf("unable to open reader %q: %w", fpath, err)
+		}
+
+		// Add the file to the pack
+		packId, err := upload.Add(ctx, &uploads.File{
+			Reader:  reader,
+			Path:    fpath,
+			Hash:    fileHash,
+			Mode:    lstat.Mode(),
+			Size:    lstat.Size(),
+			ModTime: lstat.ModTime(),
+		})
+		if err != nil {
+			return fmt.Errorf("unable to add file %q to pack: %w", fpath, err)
+		}
+
+		log.Debug("added file to pack",
+			slog.String("commit_id", commitId),
+			slog.String("path", fpath),
+			slog.String("pack_id", packId),
+		)
+
+		// Add the file to the commit
+		commit.Add(&commits.File{
+			Path:   fpath,
+			Id:     fileHash,
+			PackId: packId,
+			Size:   uint64(lstat.Size()),
+		})
+		return nil
+	}); err != nil {
+		return "", err
 	}
 
 	// Upload any remaining files in the pack before committing
@@ -310,11 +261,11 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 	}
 
 	// Upload the tags concurrently
-	tags := append([]string{"latest"}, in.Tags...)
-	tagFiles := make([]*repos.File, len(tags))
-	for i, tag := range tags {
+	tagNames := append([]string{"latest"}, in.Tags...)
+	tagFiles := make([]*repos.File, len(tagNames))
+	for i, name := range tagNames {
 		tagFiles[i] = &repos.File{
-			Path: path.Join("tags", tag),
+			Path: path.Join("tags", name),
 			Data: []byte(commitId),
 			Mode: 0644,
 		}
@@ -323,12 +274,77 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 		return "", fmt.Errorf("unable to upload tags for commit %q: %w", commitId, err)
 	}
 
-	// Cache the commit, so the next upload can skip its files without reading To
-	if err := cache.Add(commit); err != nil {
-		return "", fmt.Errorf("unable to cache commit %q: %w", commitId, err)
-	}
-
 	return commitId, nil
+}
+
+// indexTags indexes the files in the newest commit of each of the repo's tags
+// by path and hash. Older versions aren't indexed, so their files are sent
+// again unless a tag still names them.
+func indexTags(ctx context.Context, log *slog.Logger, repo repos.Repo) (map[string]*commits.File, error) {
+	now := time.Now()
+	index := map[string]*commits.File{}
+	allTags, err := tags.ReadAll(ctx, repo)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return index, nil
+		}
+		return nil, fmt.Errorf("unable to read tags: %w", err)
+	}
+	indexed := map[string]bool{}
+	for _, tag := range allTags {
+		commitId := tag.Newest()
+		if indexed[commitId] {
+			continue
+		}
+		indexed[commitId] = true
+		commit, err := commits.Read(ctx, repo, commitId)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read commit %s for tag %q: %w", commitId, tag.Name, err)
+		}
+		for _, file := range commit.Files() {
+			index[indexKey(file.Path, file.Id)] = file
+		}
+	}
+	log.Debug("indexed tagged commits",
+		slog.Int("commits", len(indexed)),
+		slog.Int("files", len(index)),
+		slog.Duration("in", time.Since(now)),
+	)
+	return index, nil
+}
+
+func indexKey(path, hash string) string {
+	return path + ":" + hash
+}
+
+// walk the upload's files that aren't ignored, with their hashes
+func (in *Upload) walk(log *slog.Logger, fn func(fpath, hash string) error) error {
+	for _, p := range in.Paths {
+		if err := fs.WalkDir(in.From, p, func(fpath string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			} else if in.Ignore(fpath) {
+				if d.IsDir() {
+					log.Debug("ignoring directory", slog.String("path", fpath))
+					return fs.SkipDir
+				}
+				log.Debug("ignoring file", slog.String("path", fpath))
+				return nil
+			} else if d.IsDir() {
+				return nil
+			}
+			// Hash the file into a sha256 hash, this reads the file in chunks, rather
+			// than loading the entire file into memory.
+			hash, err := sha256.HashFile(in.From, fpath, in.maxChunkSize)
+			if err != nil {
+				return fmt.Errorf("unable to hash file %q: %w", fpath, err)
+			}
+			return fn(fpath, hash)
+		}); err != nil {
+			return fmt.Errorf("unable to walk directory %q: %w", p, err)
+		}
+	}
+	return nil
 }
 
 // Open a file from the filesystem, handling symlinks. For symlinks, the
