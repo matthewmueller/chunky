@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 
@@ -94,17 +93,6 @@ func (c *CLI) loadFS(path string) (repos.FS, error) {
 	}
 }
 
-func (c *CLI) getUser() (string, error) {
-	u, err := user.Current()
-	if err != nil {
-		return "", fmt.Errorf("cli: getting current user: %w", err)
-	}
-	if u.Name != "" {
-		return u.Name, nil
-	}
-	return u.Username, nil
-}
-
 func formatTags(tags []*tags.Tag) string {
 	if len(tags) == 0 {
 		return ""
@@ -124,29 +112,28 @@ func formatCommit(writer io.Writer, color color.Writer, commit *commits.Commit, 
 	writer.Write(fmt.Appendf(nil, "%s\t%s\t%s\t%s\t%+v\n", color.Green(commitId), color.Green(formatTags(tags)), size, commit.User(), color.Dim(relTime)))
 }
 
-func formatTag(writer io.Writer, color color.Writer, tag *tags.Tag, newest *commits.Commit) {
+func formatTag(writer io.Writer, color color.Writer, tag *tags.Tag) {
 	b := new(bytes.Buffer)
 	b.WriteString(color.Green(tag.Name))
-	if len(tag.Commits) == 0 {
+	if len(tag.History) == 0 {
 		writer.Write(b.Bytes())
 		return
 	}
 
-	// Show the relative time of the newest commit
+	// Show when the newest commit was tagged
 	b.WriteString("\t")
-	relTime := humanize.Time(newest.CreatedAt())
-	b.WriteString(color.Dim(relTime))
+	b.WriteString(color.Dim(humanize.Time(tag.History[len(tag.History)-1].At)))
 
 	// List each commit, up to 5
 	b.WriteString("\t[")
-	commitIds := tag.Commits
+	history := tag.History
 	// If more than 5, only show last 5
-	if len(tag.Commits) > 5 {
-		commitIds = tag.Commits[len(tag.Commits)-5:]
+	if len(tag.History) > 5 {
+		history = tag.History[len(tag.History)-5:]
 	}
-	last := len(commitIds) - 1
+	last := len(history) - 1
 	for i := last; i >= 0; i-- {
-		commitId := commitIds[i]
+		commitId := history[i].Commit
 		if i == last {
 			b.WriteString(commitId)
 		} else {
@@ -154,7 +141,7 @@ func formatTag(writer io.Writer, color color.Writer, tag *tags.Tag, newest *comm
 			b.WriteString(color.Dim(commitId))
 		}
 	}
-	if len(tag.Commits) > 5 {
+	if len(tag.History) > 5 {
 		b.WriteString(", ")
 		b.WriteString(color.Dim("..."))
 	}

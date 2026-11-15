@@ -8,7 +8,6 @@ import (
 	"text/tabwriter"
 
 	"github.com/livebud/cli"
-	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/tags"
 )
 
@@ -35,11 +34,7 @@ func (c *CLI) Tags(ctx context.Context, in *Tags) error {
 	}
 	writer := tabwriter.NewWriter(c.Stdout, 0, 0, 1, ' ', 0)
 	for _, tag := range tags {
-		newest, err := commits.Read(ctx, repo, tag.Newest())
-		if err != nil {
-			return err
-		}
-		formatTag(writer, c.Color, tag, newest)
+		formatTag(writer, c.Color, tag)
 	}
 	return writer.Flush()
 }

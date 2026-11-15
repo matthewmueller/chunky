@@ -40,17 +40,11 @@ func (c *CLI) Upload(ctx context.Context, in *Upload) error {
 		return err
 	}
 
-	user, err := c.getUser()
-	if err != nil {
-		return err
-	}
-
 	revision, err := c.chunky.Upload(ctx, &chunky.Upload{
 		From:        fsys,
 		To:          repo,
 		Tags:        in.Tags,
 		Paths:       in.Paths,
-		User:        user,
 		LimitUpload: in.LimitUpload,
 		Concurrency: in.Concurrency,
 	})

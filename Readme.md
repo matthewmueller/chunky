@@ -55,6 +55,8 @@ Advanced Commands:
 
 Uploads read the repository's tagged commits and only send files they don't contain. Tag the versions you might roll back to, so their files aren't sent again.
 
+A tag keeps its history: each `chunky tag` or `chunky upload --tags` appends the commit, when it was tagged and who tagged it, so a tag doubles as a release log. `latest` only names the newest upload. `chunky cat-tag` prints it, and `ListTags` returns it as `Tag.History`.
+
 ## API Reference
 
 Upload and download with any repository:

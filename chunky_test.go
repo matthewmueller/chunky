@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -246,6 +247,147 @@ func TestFindCommitTag(t *testing.T) {
 	commit, err = chky.FindCommit(ctx, &chunky.FindCommit{Repo: host, Revision: "v1"})
 	is.NoErr(err)
 	is.Equal(commit.ID(), second)
+}
+
+// findTag returns the named tag from ListTags
+func findTag(t testing.TB, host repos.Repo, name string) *chunky.Tag {
+	t.Helper()
+	is := is.New(t)
+	allTags, err := chunky.New(logs.Discard()).ListTags(context.Background(), &chunky.ListTags{Repo: host})
+	is.NoErr(err)
+	for _, tag := range allTags {
+		if tag.Name == name {
+			return tag
+		}
+	}
+	t.Fatalf("tag %q not found", name)
+	return nil
+}
+
+func TestTagHistory(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	chky := chunky.New(logs.Discard())
+	host := local.New(virt.OS(t.TempDir()))
+	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b")})
+	is.NoErr(err)
+	second, err := deploy(t, host, &chunky.Upload{From: tree("a", "b2")})
+	is.NoErr(err)
+
+	// Release first, then second, then roll back to first
+	before := time.Now().Add(-time.Second)
+	is.NoErr(chky.TagRevision(ctx, &chunky.TagRevision{Repo: host, Tag: "hello", Revision: first, User: "Alice"}))
+	is.NoErr(chky.TagRevision(ctx, &chunky.TagRevision{Repo: host, Tag: "hello", Revision: second, User: "Bob"}))
+	is.NoErr(chky.TagRevision(ctx, &chunky.TagRevision{Repo: host, Tag: "hello", Revision: first, User: "Carol Smith"}))
+
+	history := findTag(t, host, "hello").History
+	is.Equal(len(history), 3)
+	is.Equal(history[0].Commit, first)
+	is.Equal(history[0].User, "Alice")
+	is.Equal(history[1].Commit, second)
+	is.Equal(history[1].User, "Bob")
+	is.Equal(history[2].Commit, first)
+	is.Equal(history[2].User, "Carol Smith")
+	is.True(history[0].At.After(before))
+	is.True(!history[1].At.Before(history[0].At))
+	is.True(!history[2].At.Before(history[1].At))
+
+	// The tag resolves to the rollback
+	commit, err := chky.FindCommit(ctx, &chunky.FindCommit{Repo: host, Revision: "hello"})
+	is.NoErr(err)
+	is.Equal(commit.ID(), first)
+
+	// A newline in the user can't forge another entry
+	is.NoErr(chky.TagRevision(ctx, &chunky.TagRevision{Repo: host, Tag: "hello", Revision: second, User: "Eve\n" + first}))
+	history = findTag(t, host, "hello").History
+	is.Equal(len(history), 4)
+	is.Equal(history[3].Commit, second)
+	is.Equal(history[3].User, "Eve\n"+first)
+}
+
+func TestTagNewerFields(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	chky := chunky.New(logs.Discard())
+	hostDir := t.TempDir()
+	host := local.New(virt.OS(hostDir))
+	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b")})
+	is.NoErr(err)
+	second, err := deploy(t, host, &chunky.Upload{From: tree("a", "b2")})
+	is.NoErr(err)
+
+	// A newer chunky added a field this version doesn't know about
+	newer := `{"commit":"` + first + `","at":"2026-11-14T18:02:11Z","user":"Alice","reason":"rollback"}` + "\n"
+	is.NoErr(host.Upload(ctx, &repos.File{Path: "tags/hello", Data: []byte(newer), Mode: 0644}))
+	history := findTag(t, host, "hello").History
+	is.Equal(len(history), 1)
+	is.Equal(history[0].Commit, first)
+	is.Equal(history[0].User, "Alice")
+
+	// Appending keeps the field
+	is.NoErr(chky.TagRevision(ctx, &chunky.TagRevision{Repo: host, Tag: "hello", Revision: second, User: "Bob"}))
+	data, err := os.ReadFile(filepath.Join(hostDir, "tags", "hello"))
+	is.NoErr(err)
+	is.True(strings.HasPrefix(string(data), newer))
+	is.Equal(findTag(t, host, "hello").Newest(), second)
+}
+
+func TestTagOldFormat(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	chky := chunky.New(logs.Discard())
+	hostDir := t.TempDir()
+	host := local.New(virt.OS(hostDir))
+	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b")})
+	is.NoErr(err)
+	second, err := deploy(t, host, &chunky.Upload{From: tree("a", "b2")})
+	is.NoErr(err)
+
+	// Tags written before they recorded their history are only commit ids,
+	// including timeids from before commits had ksuids. Their time is when the
+	// commit was created, which both kinds of id record.
+	old := "20241105044435\n" + first + "\n" + second + "\n"
+	is.NoErr(host.Upload(ctx, &repos.File{Path: "tags/old", Data: []byte(old), Mode: 0644}))
+	history := findTag(t, host, "old").History
+	is.Equal(len(history), 3)
+	is.Equal(history[0].Commit, "20241105044435")
+	is.Equal(history[0].At, time.Date(2024, 11, 5, 4, 44, 35, 0, time.UTC))
+	is.Equal(history[2].Commit, second)
+	is.Equal(history[2].User, "")
+	commit, err := chky.FindCommit(ctx, &chunky.FindCommit{Repo: host, Revision: "old"})
+	is.NoErr(err)
+	is.Equal(commit.ID(), second)
+	is.True(history[2].At.Sub(commit.CreatedAt()).Abs() <= time.Second)
+
+	// Appending keeps the old lines as they were
+	is.NoErr(chky.TagRevision(ctx, &chunky.TagRevision{Repo: host, Tag: "old", Revision: first, User: "Alice"}))
+	data, err := os.ReadFile(filepath.Join(hostDir, "tags", "old"))
+	is.NoErr(err)
+	is.True(strings.HasPrefix(string(data), old))
+	is.Equal(len(findTag(t, host, "old").History), 4)
+}
+
+func TestUploadAppendsTags(t *testing.T) {
+	is := is.New(t)
+	host := local.New(virt.OS(t.TempDir()))
+	first, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Tags: []string{"v2"}, User: "Alice"})
+	is.NoErr(err)
+	second, err := deploy(t, host, &chunky.Upload{From: tree("a", "b2"), Tags: []string{"v2"}, User: "Bob"})
+	is.NoErr(err)
+	history := findTag(t, host, "v2").History
+	is.Equal(len(history), 2)
+	is.Equal(history[0].Commit, first)
+	is.Equal(history[0].User, "Alice")
+	is.Equal(history[1].Commit, second)
+	is.Equal(history[1].User, "Bob")
+	is.True(!history[1].At.IsZero())
+
+	// latest only names the newest upload
+	history = findTag(t, host, "latest").History
+	is.Equal(len(history), 1)
+	is.Equal(history[0].Commit, second)
+	is.Equal(history[0].User, "Bob")
+	is.True(!history[0].At.IsZero())
 }
 
 func TestUploadChanged(t *testing.T) {

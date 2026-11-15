@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"os/user"
 	"path"
 	"strings"
 	"time"
@@ -64,11 +63,11 @@ func (in *Upload) validate() (err error) {
 
 	// Default to the current user
 	if in.User == "" {
-		user, err := user.Current()
+		user, err := currentUser()
 		if err != nil {
-			return errors.Join(err, fmt.Errorf("missing user and getting current user failed with: %w", err))
+			return err
 		}
-		in.User = user.Username
+		in.User = user
 	}
 
 	// Validate the tags
@@ -260,18 +259,18 @@ func (c *Client) Upload(ctx context.Context, in *Upload) (revision string, err e
 		return "", fmt.Errorf("unable to upload commit %q: %w", commitId, err)
 	}
 
-	// Upload the tags concurrently
-	tagNames := append([]string{"latest"}, in.Tags...)
-	tagFiles := make([]*repos.File, len(tagNames))
-	for i, name := range tagNames {
-		tagFiles[i] = &repos.File{
-			Path: path.Join("tags", name),
-			Data: []byte(commitId),
-			Mode: 0644,
-		}
+	// Replace latest rather than append to it, so it doesn't grow with every
+	// upload. The commits already record their own history.
+	tagged := &tags.Tagged{Commit: commitId, At: createdAt, User: in.User}
+	if err := tags.Set(ctx, in.To, "latest", tagged); err != nil {
+		return "", fmt.Errorf("unable to tag commit %q as latest: %w", commitId, err)
 	}
-	if err := upload.Direct(ctx, tagFiles...); err != nil {
-		return "", fmt.Errorf("unable to upload tags for commit %q: %w", commitId, err)
+
+	// Append the commit to each tag's history
+	for _, name := range in.Tags {
+		if err := tags.Append(ctx, in.To, name, tagged); err != nil {
+			return "", fmt.Errorf("unable to tag commit %q as %q: %w", commitId, name, err)
+		}
 	}
 
 	return commitId, nil

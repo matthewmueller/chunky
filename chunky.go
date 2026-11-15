@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
+	"os/user"
 	"runtime"
+	"time"
 
 	"github.com/matthewmueller/chunky/internal/commits"
 	"github.com/matthewmueller/chunky/internal/tags"
@@ -64,56 +65,58 @@ func (in *ListTags) validate() (err error) {
 	return err
 }
 
-type Tag struct {
-	Name    string
-	Commits []string
-}
+// Tag lists every commit it has named, oldest first
+type Tag = tags.Tag
 
-func (c *Client) ListTags(ctx context.Context, in *ListTags) (allTags []*Tag, err error) {
+// Tagged is one entry in a tag's history: the commit, and when and by whom
+// it was tagged
+type Tagged = tags.Tagged
+
+func (c *Client) ListTags(ctx context.Context, in *ListTags) ([]*Tag, error) {
 	if err := in.validate(); err != nil {
 		return nil, err
 	}
-	tags, err := tags.ReadAll(ctx, in.Repo)
-	if err != nil {
-		return nil, err
-	}
-	for _, tag := range tags {
-		allTags = append(allTags, &Tag{
-			Name:    tag.Name,
-			Commits: tag.Commits,
-		})
-	}
-	return allTags, nil
+	return tags.ReadAll(ctx, in.Repo)
 }
 
 type TagRevision struct {
 	Repo     repos.Repo
 	Tag      string
 	Revision string
+	// User who tagged the revision (default: the current user)
+	User string
 }
 
-// TagRevision tags a revision
-func (c *Client) TagRevision(ctx context.Context, in *TagRevision) error {
+// TagRevision appends a revision to a tag's history
+func (c *Client) TagRevision(ctx context.Context, in *TagRevision) (err error) {
+	if in.User == "" {
+		if in.User, err = currentUser(); err != nil {
+			return err
+		}
+	}
+
 	// Check that the commit exists
 	commit, err := commits.Read(ctx, in.Repo, in.Revision)
 	if err != nil {
 		return fmt.Errorf("unable to read commit for %s: %w", in.Revision, err)
 	}
 
-	// If the tag already exists, append the commit to the end of the file
-	tag, err := tags.Read(ctx, in.Repo, in.Tag)
+	return tags.Append(ctx, in.Repo, in.Tag, &tags.Tagged{
+		Commit: commit.ID(),
+		At:     time.Now().UTC(),
+		User:   in.User,
+	})
+}
+
+// currentUser returns the current user's full name, or their username when
+// the name isn't set
+func currentUser() (string, error) {
+	user, err := user.Current()
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("unable to read tag for %s: %w", in.Tag, err)
-		}
-		tag = &tags.Tag{
-			Name: in.Tag,
-		}
+		return "", fmt.Errorf("missing user and getting current user failed with: %w", err)
 	}
-
-	// Append the commit to the tag
-	tag.Commits = append(tag.Commits, commit.ID())
-
-	// Upload the tag file
-	return in.Repo.Upload(ctx, tag.File())
+	if user.Name != "" {
+		return user.Name, nil
+	}
+	return user.Username, nil
 }
