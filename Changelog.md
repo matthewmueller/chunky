@@ -1,3 +1,7 @@
+# 0.8.1 / 2026-11-14
+
+- add support for deleting tags
+
 # 0.8.0 / 2026-11-14
 
 - tags record when and by whom each commit was tagged, so a tag doubles as a release history
