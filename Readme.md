@@ -53,7 +53,7 @@ Advanced Commands:
   cat-tag      show a tag
 ```
 
-Uploads read the repository's tagged commits and only send files they don't contain. Tag the versions you might roll back to, so their files aren't sent again.
+Uploads read the repository's tagged commits and only send files they don't contain. Tag the versions you might roll back to, so their files aren't sent again, and delete tags you no longer need with `chunky tag --delete`, so uploads stop reading them.
 
 A tag keeps its history: each `chunky tag` or `chunky upload --tags` appends the commit, when it was tagged and who tagged it, so a tag doubles as a release log. `latest` only names the newest upload. `chunky cat-tag` prints it, and `ListTags` returns it as `Tag.History`.
 
@@ -100,6 +100,7 @@ type Repo interface {
 	Upload(ctx context.Context, file *File) error
 	Download(ctx context.Context, path string) (*File, error)
 	ReadDir(dir string) ([]fs.DirEntry, error)
+	RemoveAll(path string) error
 	Close() error
 }
 ```

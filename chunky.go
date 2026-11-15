@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os/user"
+	"path"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/matthewmueller/chunky/internal/commits"
@@ -110,6 +112,32 @@ func (c *Client) TagRevision(ctx context.Context, in *TagRevision) (err error) {
 
 // currentUser returns the current user's full name, or their username when
 // the name isn't set
+type DeleteTag struct {
+	Repo repos.Repo
+	Tag  string
+}
+
+func (in *DeleteTag) validate() (err error) {
+	if in.Repo == nil {
+		err = errors.Join(err, errors.New("missing 'repo'"))
+	}
+	// The tag names a file in tags/, so it can't be a path to anything else
+	if in.Tag == "" || in.Tag == "." || in.Tag == ".." || strings.Contains(in.Tag, "/") {
+		err = errors.Join(err, fmt.Errorf("invalid tag %q", in.Tag))
+	}
+	return err
+}
+
+// DeleteTag removes a tag and its history. The commits it named stay in the
+// repository, but uploads stop reading them. Deleting a missing tag is not an
+// error.
+func (c *Client) DeleteTag(ctx context.Context, in *DeleteTag) error {
+	if err := in.validate(); err != nil {
+		return err
+	}
+	return in.Repo.RemoveAll(path.Join("tags", in.Tag))
+}
+
 func currentUser() (string, error) {
 	user, err := user.Current()
 	if err != nil {

@@ -102,3 +102,27 @@ func TestInvalidPath(t *testing.T) {
 	is.Equal(res.StatusCode, http.StatusBadRequest)
 	is.Equal(string(body), "invalid path \"tags/../../secret\"\n")
 }
+
+func TestRemoveAll(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	server := httpServer(t, t.TempDir())
+	repo := http_repo.New(server.URL + "/repo")
+	repo.Client = server.Client()
+
+	is.NoErr(repo.Upload(ctx, &virt.File{Path: "tags/v1", Data: []byte("a"), Mode: 0644}))
+	is.NoErr(repo.RemoveAll("tags/v1"))
+	_, err := repo.Download(ctx, "tags/v1")
+	is.True(errors.Is(err, fs.ErrNotExist))
+
+	// Like os.RemoveAll, a missing path is not an error
+	is.NoErr(repo.RemoveAll("tags/v1"))
+
+	// The root can't be removed
+	req, err := http.NewRequest(http.MethodDelete, server.URL+"/repo/", nil)
+	is.NoErr(err)
+	res, err := server.Client().Do(req)
+	is.NoErr(err)
+	res.Body.Close()
+	is.Equal(res.StatusCode, http.StatusMethodNotAllowed)
+}

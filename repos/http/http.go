@@ -87,6 +87,17 @@ func (r *Repo) ReadDir(dir string) ([]fs.DirEntry, error) {
 	return des, nil
 }
 
+func (r *Repo) RemoveAll(fpath string) error {
+	req, err := http.NewRequest(http.MethodDelete, r.fileUrl(fpath), nil)
+	if err != nil {
+		return fmt.Errorf("http: unable to create remove request for %q: %w", fpath, err)
+	}
+	if _, err := r.do(req); err != nil {
+		return fmt.Errorf("http: unable to remove %q: %w", fpath, err)
+	}
+	return nil
+}
+
 func (r *Repo) Close() error {
 	return nil
 }
@@ -144,6 +155,9 @@ func Handler(repo repos.Repo) http.Handler {
 			err = serveFile(r.Context(), w, repo, fpath)
 		case r.Method == http.MethodPut && !dir:
 			err = uploadFile(r, repo, fpath)
+		// Never the root, which would remove the whole repository
+		case r.Method == http.MethodDelete && !dir && fpath != ".":
+			err = repo.RemoveAll(fpath)
 		default:
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return

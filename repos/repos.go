@@ -50,6 +50,9 @@ type Repo interface {
 	Download(ctx context.Context, path string) (*File, error)
 	// ReadDir reads a directory from the repository
 	ReadDir(dir string) ([]fs.DirEntry, error)
+	// RemoveAll removes a path and anything it contains, like os.RemoveAll. A
+	// missing path is not an error.
+	RemoveAll(path string) error
 	// Close the repository
 	Close() error
 }

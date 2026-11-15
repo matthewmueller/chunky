@@ -390,6 +390,45 @@ func TestUploadAppendsTags(t *testing.T) {
 	is.True(!history[0].At.IsZero())
 }
 
+func TestDeleteTag(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	chky := chunky.New(logs.Discard())
+	hostDir := t.TempDir()
+	host := local.New(virt.OS(hostDir))
+
+	// A preview is tagged, then main moves on
+	_, err := deploy(t, host, &chunky.Upload{From: tree("a", "b"), Tags: []string{"hello--pr-42"}})
+	is.NoErr(err)
+	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b2")})
+	is.NoErr(err)
+	is.Equal(countPacks(t, hostDir), 2)
+
+	// Deleting the preview's tag removes it
+	is.NoErr(chky.DeleteTag(ctx, &chunky.DeleteTag{Repo: host, Tag: "hello--pr-42"}))
+	_, err = chky.FindCommit(ctx, &chunky.FindCommit{Repo: host, Revision: "hello--pr-42"})
+	is.True(errors.Is(err, fs.ErrNotExist))
+	allTags, err := chky.ListTags(ctx, &chunky.ListTags{Repo: host})
+	is.NoErr(err)
+	is.Equal(len(allTags), 1)
+	is.Equal(allTags[0].Name, "latest")
+
+	// Uploads stop reading its commit, so its files are sent again
+	_, err = deploy(t, host, &chunky.Upload{From: tree("a", "b")})
+	is.NoErr(err)
+	is.Equal(countPacks(t, hostDir), 3)
+
+	// Deleting a missing tag is not an error
+	is.NoErr(chky.DeleteTag(ctx, &chunky.DeleteTag{Repo: host, Tag: "hello--pr-42"}))
+
+	// A tag can't name anything outside tags/
+	for _, tag := range []string{"", ".", "..", "../commits"} {
+		is.True(chky.DeleteTag(ctx, &chunky.DeleteTag{Repo: host, Tag: tag}) != nil)
+	}
+	_, err = os.Stat(filepath.Join(hostDir, "commits"))
+	is.NoErr(err)
+}
+
 func TestUploadChanged(t *testing.T) {
 	is := is.New(t)
 	hostDir := t.TempDir()

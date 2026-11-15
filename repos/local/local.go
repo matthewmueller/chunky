@@ -55,6 +55,10 @@ func (r *Repo) ReadDir(dir string) ([]fs.DirEntry, error) {
 	return fs.ReadDir(r.fsys, dir)
 }
 
+func (r *Repo) RemoveAll(path string) error {
+	return r.fsys.RemoveAll(path)
+}
+
 func (r *Repo) Close() error {
 	return nil
 }

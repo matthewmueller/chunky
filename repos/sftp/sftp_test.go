@@ -173,3 +173,20 @@ func TestUploadDownloadSymlink(t *testing.T) {
 	is.NoErr(err)
 	is.Equal(string(data), "to content")
 }
+
+func TestRemoveAll(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	sftpClient, sftpCleanup, err := sftpServer(t.TempDir())
+	is.NoErr(err)
+	defer sftpCleanup()
+
+	repo := sftp_repo.New(sftpClient, "")
+	is.NoErr(repo.Upload(ctx, &virt.File{Path: "tags/v1", Data: []byte("a"), Mode: 0644}))
+	is.NoErr(repo.RemoveAll("tags/v1"))
+	_, err = repo.Download(ctx, "tags/v1")
+	is.True(errors.Is(err, fs.ErrNotExist))
+
+	// Like os.RemoveAll, a missing path is not an error
+	is.NoErr(repo.RemoveAll("tags/v1"))
+}

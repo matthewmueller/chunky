@@ -2,6 +2,7 @@ package sftp
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -111,6 +112,11 @@ func writeFile(sftp *sftp.Client, name string, data []byte, mode fs.FileMode) er
 	return nil
 }
 
+// RemoveAll removes a path and anything it contains. Like os.RemoveAll, a
+// missing path is not an error.
 func (r *Repo) RemoveAll(name string) error {
-	return r.sftp.RemoveAll(path.Join(r.dir, name))
+	if err := r.sftp.RemoveAll(path.Join(r.dir, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
