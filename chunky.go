@@ -110,8 +110,6 @@ func (c *Client) TagRevision(ctx context.Context, in *TagRevision) (err error) {
 	})
 }
 
-// currentUser returns the current user's full name, or their username when
-// the name isn't set
 type DeleteTag struct {
 	Repo repos.Repo
 	Tag  string
@@ -138,6 +136,8 @@ func (c *Client) DeleteTag(ctx context.Context, in *DeleteTag) error {
 	return in.Repo.RemoveAll(path.Join("tags", in.Tag))
 }
 
+// currentUser returns the current user's full name, or their username when
+// the name isn't set
 func currentUser() (string, error) {
 	user, err := user.Current()
 	if err != nil {
