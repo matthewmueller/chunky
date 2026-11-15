@@ -1,11 +1,11 @@
 # 0.8.0 / 2026-11-14
 
-- tags record when and by whom each commit was tagged, so a tag doubles as a release history. Tag files written before this keep working
-- **BREAKING:** tag entries are stored as JSON lines, e.g. `{"commit":"3M7a…","at":"2026-11-14T18:02:11Z","user":"Alice"}`, so later versions can add fields without breaking this one. chunky v0.7.0 and older can't read them, and their uploads fail once a repository has one, so upgrade every client before uploading
-- `TagRevision` takes an optional `User`. It and `Upload.User` default to the current user's full name, falling back to their username, as the CLI already did
-- `chunky tags` shows when the newest commit was tagged, not when it was uploaded
-- **BREAKING:** `Upload` appends to its `Tags` like `TagRevision` does, instead of replacing them. `latest` still only names the newest upload
-- **BREAKING:** `Tag.Commits []string` is now `Tag.History []*Tagged`, where each `Tagged` has the `Commit`, when it was tagged (`At`) and by whom (`User`), oldest first
+- tags record when and by whom each commit was tagged, so a tag doubles as a release history
+- `chunky tags` shows when each tag was last tagged
+- `TagRevision.User` and `Upload.User` default to the current user's full name
+- **BREAKING:** tags are stored as JSON lines, e.g. `{"commit":"3M7a…","at":"2026-11-14T18:02:11Z","user":"Alice"}`. Uploads will fail if an older chunky client is trying to upload to a newer repo.
+- **BREAKING:** `Upload` appends to its `Tags` instead of replacing them
+- **BREAKING:** `Tag.Commits []string` is now `Tag.History []*Tagged`, with `Commit`, `At` and `User`
 
 # 0.7.0 / 2026-10-31
 
